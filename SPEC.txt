@@ -1,0 +1,18 @@
+Somos trabajadores freelance trabajando para nuestro cliente. En este directorio, ira la mobile app construida con react native ultima version y expo. Esta app mobil tiene
+como objetivo permitir a los trabajadores ya registrados en el backend supabase el registro de inicio y termino de 
+su jornada laboral. Actualmente, el cliente utiliza una app movil llamada BIXPE pero su problema con BIXPE es 
+es que no le permite trabajar offline y que debe hacer un proceso manual (descargar reporte desde bIXPE) para integrar los marcajes realizados por los 
+trabajadores. Este proceso manual esta en el directorio "gestion-horarios-service". Esta aplicacion  debe trabajar offline e integrarse con 
+el backend de "logiflow-control-horarios". 
+En esta etapa solo debemos construir el bundle apk de android . La aplicacion debe integrarse a los otros aplicativos (logiflow-control-horarios) para 
+permitirle a los usuarios las siguientes acciones:
+
+
+0. Todas las acciones a continuacion deben ser posibles de ejecutar con el dispositivo en linea o fuera de linea
+1. Hacer Login
+2. Una vez logeado debe activar un boton "Marcar entrada" y otro Boton "Marcar Salida" y un text entry para que el trabajador ingrese alguna observacion
+3. Al hacer clic pedir una imagen
+4. Con la imagen obtenida, debe registrar la hora de la entrada en el backend de "logiflow-control-horarios" supabase para el usuario logeado
+5. Debe permitirle al usuario ver un historial con sus marcajes e imagenes obtenidas y un flag que indique sincronizado o no con supabase
+6. debe notificar al usuario cuando se acerque su hora de entrada o salida
+7. Debe ser capaz de enviar los marcajes realizados offline cuando recupere la conectividad 
