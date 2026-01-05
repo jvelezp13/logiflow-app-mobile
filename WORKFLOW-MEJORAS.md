@@ -1,6 +1,6 @@
 # Workflow de Mejoras - Control Horario Mobile App
 
-**Fecha de creación:** Enero 2025
+**Fecha de creación:** Enero 2026
 **Responsable técnico:** Claude (AI Assistant)
 **Responsable de validación:** Julián Vélez
 
@@ -22,12 +22,13 @@ Este documento describe el proceso completo para implementar 3 mejoras críticas
 
 1. [Configuración del Entorno de Desarrollo](#1-configuración-del-entorno-de-desarrollo)
 2. [Arquitectura del Proyecto (Resumen)](#2-arquitectura-del-proyecto-resumen)
-3. [Los 3 Problemas a Resolver](#3-los-3-problemas-a-resolver)
+3. [Los 3 Problemas Críticos a Resolver](#3-los-3-problemas-a-resolver)
 4. [Plan de Implementación](#4-plan-de-implementación)
 5. [Checklist de Validación](#5-checklist-de-validación)
 6. [Registro de Cambios](#6-registro-de-cambios)
 7. [Troubleshooting](#7-troubleshooting)
-8. [Hallazgos Adicionales y Mejoras Futuras](#8-hallazgos-adicionales-y-mejoras-futuras)
+8. [Ajustes Pendientes del Desarrollador Original](#8-ajustes-pendientes-del-desarrollador-original)
+9. [Hallazgos Adicionales y Mejoras Futuras](#9-hallazgos-adicionales-y-mejoras-futuras)
 
 ---
 
@@ -558,13 +559,249 @@ Notas adicionales...
 
 ---
 
-### Cambios Pendientes
+### Cambios Realizados
 
-| Fecha | Problema | Estado | Validado |
-|-------|----------|--------|----------|
-| - | 3. Fechas | Pendiente | ⬜ |
-| - | 1. Sync Kiosco | Pendiente | ⬜ |
-| - | 2. Hora Servidor | Pendiente | ⬜ |
+| Fecha | Problema | Cambio | Estado | Validado |
+|-------|----------|--------|--------|----------|
+| 2026-01-05 | 3. Fechas | Cambiar `toISOString()` por `format()` en NovedadForm.tsx | ✅ Completado | ✅ |
+| 2026-01-05 | Bug Login | Eliminar validación redundante de cédula en LoginScreen.tsx | ✅ Completado | ✅ |
+| 2026-01-05 | 1. Sync Kiosco | Modificar SyncProvider.tsx para sync sin auth | ✅ Completado | ✅ |
+| 2026-01-05 | Jornadas Partidas | Permitir múltiples entradas/salidas por día | ✅ Completado | ✅ |
+| 2026-01-05 | Kiosco Multi-Dispositivo | Consultar Supabase para estado entre dispositivos | ✅ Completado | ⬜ Pendiente |
+| 2026-01-05 | 2. Hora Servidor | Validar hora del dispositivo vs servidor antes de marcar | ✅ Completado | ✅ |
+| 2026-01-05 | A1 - Nombre App | Cambiar nombre a "LogiFlow Marcaje" en app.json y strings.xml | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A2 - Cámara frontal | Configurar cámara frontal por defecto para selfies | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A6 - Incapacidad | Eliminar opción "Incapacidad" del picker de novedades | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A7 - Opciones peligrosas | Eliminar "Reset BD" y "Recordatorios" de Ajustes | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A8 - Problemas acceder | Eliminar zona sin funcionalidad del LoginScreen | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A9 - Icono App | Actualizar icono con reloj azul LogiFlow | ✅ Completado | ⬜ APK |
+| 2026-01-05 | Fix Duplicados | Mutex en sync para evitar errores 23505 en paralelo | ✅ Completado | ✅ |
+
+### Detalle de Cambios del 2026-01-05
+
+#### Cambio 1: Fix de Fechas (Problema 3)
+**Archivo:** `src/components/novedades/NovedadForm.tsx`
+**Línea:** 86
+
+```typescript
+// Antes:
+fecha: formData.fecha.toISOString().split('T')[0]
+
+// Después:
+fecha: format(formData.fecha, 'yyyy-MM-dd')
+```
+
+**Import agregado:**
+```typescript
+import { format } from 'date-fns';
+```
+
+**Resultado:** Las fechas de novedades ahora respetan la zona horaria local.
+
+---
+
+#### Cambio 2: Fix de Login (Bug adicional)
+**Archivo:** `src/screens/auth/LoginScreen.tsx`
+**Problema:** El login mostraba "Perfil Incompleto" aunque el usuario sí tenía cédula. Era una condición de carrera (race condition) donde el setTimeout verificaba `userCedula` antes de que el store se actualizara.
+
+```typescript
+// Antes (líneas 106-126):
+if (success) {
+  setTimeout(() => {
+    if (!userCedula) {
+      Alert.alert('Perfil Incompleto', ...);
+    }
+  }, 500);
+}
+
+// Después:
+// Validación eliminada - ya se hace en auth.service.ts
+await login(email.trim().toLowerCase(), password);
+```
+
+**Resultado:** Los usuarios con cédula pueden hacer login correctamente.
+
+---
+
+#### Cambio 3: SyncProvider (Problema 1 - Completado)
+**Archivo:** `src/components/SyncProvider.tsx`
+**Cambio:** Eliminada la verificación de `isAnyAuthenticated` que bloqueaba el sync cuando el usuario de kiosco cerraba sesión.
+
+```typescript
+// Antes:
+if (!isAnyAuthenticated) {
+  return <>{children}</>;
+}
+
+// Después:
+// Sync corre siempre, independiente del estado de auth
+// Los registros de kiosco tienen kioskPin guardado para auth
+```
+
+**Estado:** ✅ Completado y validado
+
+---
+
+#### Cambio 4: Jornadas Partidas (Bug descubierto y corregido)
+**Archivo:** `src/services/sync/sync.service.ts`
+**Problema:** Cuando un usuario hacía múltiples marcajes de entrada el mismo día (jornadas partidas), los registros se sobrescribían en lugar de crearse nuevos.
+
+**Causa:** La lógica de sync usaba `cedula + fecha + tipo_marcaje` como identificador único, lo que causaba que el segundo clock_in del día actualizara el primero en vez de crear un nuevo registro.
+
+```typescript
+// Antes (líneas 228-235):
+const { data: existingRecords, error: selectError } = await supabase
+  .from('horarios_registros_diarios')
+  .select('id')
+  .eq('cedula', record.userCedula)
+  .eq('fecha', record.date)
+  .eq('tipo_marcaje', record.attendanceType)  // ← Problema!
+  .limit(1);
+
+// Después:
+const { data: existingRecords, error: selectError } = await supabase
+  .from('horarios_registros_diarios')
+  .select('id')
+  .eq('cedula', record.userCedula)
+  .eq('fecha', record.date)
+  .eq('timestamp_local', record.timestamp)  // ← Cada registro es único por timestamp
+  .limit(1);
+```
+
+**Resultado:** Ahora se permiten múltiples entradas/salidas por día (jornadas partidas), cada registro es identificado únicamente por su `timestamp_local`.
+
+**Estado:** ✅ Completado y validado
+
+---
+
+#### Cambio 5: Kiosco Multi-Dispositivo (Nuevo requerimiento)
+**Archivos modificados:**
+- `src/services/attendance/attendance.service.ts`
+- `src/screens/kiosk/KioskHomeScreen.tsx`
+
+**Problema:** En modo kiosco, el estado de marcajes (puede entrar / puede salir) se consultaba desde la base de datos local (WatermelonDB/SQLite). Si un empleado marcaba entrada desde su teléfono personal y luego iba a la tablet kiosco, el kiosco no veía ese marcaje porque estaba en otra base de datos local.
+
+**Solución:** Crear funciones que consultan Supabase (cloud) en vez de la BD local para obtener el estado de marcajes en modo kiosco.
+
+**Nuevas funciones en attendance.service.ts:**
+```typescript
+// Imports agregados
+import { supabase } from '@services/supabase/client';
+import { format } from 'date-fns';
+
+// Nueva función para obtener último tipo de marcaje desde cloud
+async getLastClockTypeFromCloud(userCedula: string): Promise<AttendanceType | null> {
+  try {
+    const today = new Date();
+    const todayStr = format(today, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('horarios_registros_diarios')
+      .select('tipo_marcaje, timestamp_local')
+      .eq('cedula', userCedula)
+      .eq('fecha', todayStr)
+      .order('timestamp_local', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      return null;
+    }
+
+    return data[0].tipo_marcaje as AttendanceType;
+  } catch (error) {
+    console.error('[AttendanceService] Get cloud status error:', error);
+    return null;
+  }
+}
+
+// Nueva función: puede hacer entrada (consulta cloud)
+async canClockInFromCloud(userCedula: string): Promise<boolean> {
+  const lastType = await this.getLastClockTypeFromCloud(userCedula);
+  return lastType === null || lastType === 'clock_out';
+}
+
+// Nueva función: puede hacer salida (consulta cloud)
+async canClockOutFromCloud(userCedula: string): Promise<boolean> {
+  const lastType = await this.getLastClockTypeFromCloud(userCedula);
+  return lastType === 'clock_in';
+}
+```
+
+**Cambios en KioskHomeScreen.tsx:**
+```typescript
+// Antes (líneas 85-88):
+const [canIn, canOut] = await Promise.all([
+  attendanceService.canClockIn(kioskUser.user_id),
+  attendanceService.canClockOut(kioskUser.user_id),
+]);
+
+// Después:
+const [canIn, canOut] = await Promise.all([
+  attendanceService.canClockInFromCloud(kioskUser.cedula),
+  attendanceService.canClockOutFromCloud(kioskUser.cedula),
+]);
+```
+
+**Nota importante:** El cambio usa `cedula` en vez de `user_id` para consultar, ya que la tabla `horarios_registros_diarios` identifica usuarios por cédula.
+
+**Estado:** ✅ Código completado - ⬜ Pendiente validación con segundo dispositivo
+
+---
+
+#### Cambio 6: Validación de Hora del Servidor (Problema 2)
+**Archivos creados:**
+- `src/services/time/timeValidation.service.ts` (nuevo)
+- `src/services/time/index.ts` (nuevo)
+
+**Archivos modificados:**
+- `src/services/attendance/attendance.service.ts`
+
+**Problema:** Los usuarios podían manipular la hora de su dispositivo para registrar marcajes con horas falsas.
+
+**Solución:** Crear un servicio que valida la hora del dispositivo contra el servidor antes de permitir un marcaje. Si la diferencia es mayor a 5 minutos, el marcaje es rechazado.
+
+**Nuevo servicio timeValidation.service.ts:**
+```typescript
+// Constantes
+const MAX_TIME_DIFF_MS = 5 * 60 * 1000; // 5 minutos
+
+// Métodos principales:
+// 1. getServerTimeFromHeaders() - Obtiene hora del header HTTP "Date" (más confiable)
+// 2. getServerTimeFallback() - Estima hora basado en latencia de red
+// 3. validateTime() - Compara hora local vs servidor
+
+// Ejemplo de resultado:
+type TimeValidationResult = {
+  isValid: boolean;      // true si diferencia < 5 minutos
+  serverTime: Date;      // Hora del servidor
+  deviceTime: Date;      // Hora del dispositivo
+  diffMs: number;        // Diferencia en milisegundos
+  diffMinutes: number;   // Diferencia en minutos
+  error?: string;        // Mensaje de error si aplica
+};
+```
+
+**Integración en attendance.service.ts:**
+```typescript
+// Antes de crear el registro:
+const timeValidation = await timeValidationService.validateTime();
+
+if (!timeValidation.isValid) {
+  const errorMessage = timeValidationService.getTimeDiffMessage(timeValidation.diffMinutes);
+  return {
+    success: false,
+    error: `${errorMessage}. Por favor ajusta la hora de tu dispositivo.`,
+    timeValidation,
+  };
+}
+```
+
+**Comportamiento:**
+- Si la hora del dispositivo difiere más de 5 minutos del servidor, el marcaje es **rechazado**
+- El usuario recibe un mensaje indicando cuánto está desfasado (ej: "Tu dispositivo está 15 minutos adelantado")
+- Si no se puede obtener la hora del servidor (sin conexión), el marcaje **se permite** para no bloquear operaciones offline
+
+**Estado:** ✅ Código completado - ⬜ Pendiente validación
 
 ---
 
@@ -685,11 +922,53 @@ adb uninstall com.logiflow.controlhorario
 
 ---
 
-## 8. Hallazgos Adicionales y Mejoras Futuras
+## 8. Ajustes Pendientes del Desarrollador Original
+
+Estos ajustes fueron solicitados al desarrollador original pero no se confirmó si fueron implementados. El código en GitHub puede no estar actualizado con la última versión del APK de producción.
+
+### 8.1 Lista de Ajustes Solicitados
+
+| # | Ajuste | Descripción Detallada | Estado | Prioridad |
+|---|--------|----------------------|--------|-----------|
+| A1 | Nombre de la App | Cambiar a "LogiFlow Marcaje" | ✅ Completado | Alta |
+| A2 | Cámara frontal | Solicitar permiso para cámara frontal en vez de trasera para selfies de marcaje | ✅ Completado | Alta |
+| A3 | Marcajes con PIN | Los marcajes con PIN no quedan registrados en LogiFlow (relacionado con Problema 1) | ✅ Resuelto | Crítica |
+| A4 | Badge de sincronización | Hay marcajes "phantom" en el badge de sincronización | ⬜ Pendiente revisión | Media |
+| A5 | Novedades: Ajuste de hora | Cambiar "Entrada tardía" y "Salida temprana" por "Ajuste Entrada" y "Ajuste Salida". Debe permitir seleccionar a qué marcaje hace referencia y cuál es la hora nueva que se debe aplicar | ⬜ Pendiente revisión | Media |
+| A6 | Eliminar Incapacidad | Eliminar la opción de incapacidad desde novedades en la app | ✅ Completado | Baja |
+| A7 | Eliminar opciones peligrosas | Eliminar opciones de "Borrar base de datos local" y "Notificaciones/Recordatorios" del módulo Ajustes | ✅ Completado | Media |
+| A8 | Zona "Problemas para acceder" | En la página de login, la zona "¿Problemas para acceder? Contacta al administrador" no tiene funcionalidad. Decidir si omitir o configurar | ✅ Completado (eliminada) | Baja |
+| A9 | Icono de la App | Actualizar con la imagen proporcionada (reloj azul) | ✅ Completado | Media |
+| A10 | Imagen de novedades | Revisar imagen en la sección de novedades | ⬜ Pendiente revisión | Baja |
+
+### 8.2 Detalle de Ajuste A5: Novedades de Ajuste de Hora
+
+**Objetivo:** Permitir que el usuario solicite un cambio en la hora de ingreso o salida de un marcaje existente.
+
+**Requerimientos:**
+1. Renombrar tipos de novedad:
+   - "Entrada tardía" → "Ajuste Entrada"
+   - "Salida temprana" → "Ajuste Salida"
+
+2. Nuevos campos en el formulario:
+   - Selector de marcaje al que hace referencia (lista de marcajes del día)
+   - Campo de hora nueva que se debe aplicar
+   - Campo de explicación/justificación (ya existe como "motivo")
+
+3. Flujo esperado:
+   - Usuario selecciona "Ajuste Entrada" o "Ajuste Salida"
+   - Sistema muestra los marcajes del día
+   - Usuario selecciona el marcaje a ajustar
+   - Usuario ingresa la hora correcta
+   - Usuario explica el motivo del ajuste
+
+---
+
+## 9. Hallazgos Adicionales y Mejoras Futuras
 
 Durante el análisis exhaustivo del código se identificaron los siguientes puntos que no son críticos pero deben considerarse para futuras mejoras.
 
-### 8.1 Problemas Potenciales Identificados
+### 9.1 Problemas Potenciales Identificados
 
 | ID | Hallazgo | Descripción | Riesgo | Prioridad |
 |----|----------|-------------|--------|-----------|
@@ -702,7 +981,7 @@ Durante el análisis exhaustivo del código se identificaron los siguientes punt
 | H7 | Precisión decimal inconsistente | `timeToDecimal()` no redondea, pero `calculateHoursWorked()` redondea a 2 decimales. | Bajo | Consistencia |
 | H8 | Tamaño de foto no validado | Config tiene `photoMaxSize: 2MB` pero no se valida en `attendanceService`, solo en camera capture. | Bajo | Validación |
 
-### 8.2 Mejoras de Seguridad Recomendadas
+### 9.2 Mejoras de Seguridad Recomendadas
 
 | ID | Mejora | Descripción | Esfuerzo |
 |----|--------|-------------|----------|
@@ -710,7 +989,7 @@ Durante el análisis exhaustivo del código se identificaron los siguientes punt
 | S2 | Expiración de PIN kiosco | PIN de kiosco sigue válido indefinidamente. Considerar expiración después de X minutos de inactividad. | Bajo |
 | S3 | Validar base64 antes de envío | Prevenir potenciales inyecciones si base64 es muy grande o malformado. | Bajo |
 
-### 8.3 Mejoras de UX Recomendadas
+### 9.3 Mejoras de UX Recomendadas
 
 | ID | Mejora | Descripción | Esfuerzo |
 |----|--------|-------------|----------|
@@ -718,7 +997,7 @@ Durante el análisis exhaustivo del código se identificaron los siguientes punt
 | U2 | Notificación de sync exitoso | Confirmar al usuario cuando sus fichajes se sincronizaron correctamente. | Bajo |
 | U3 | Modo offline explícito | Indicar claramente cuando la app está funcionando sin conexión. | Bajo |
 
-### 8.4 Deuda Técnica
+### 9.4 Deuda Técnica
 
 | ID | Item | Descripción | Acción Recomendada |
 |----|------|-------------|-------------------|
@@ -726,7 +1005,7 @@ Durante el análisis exhaustivo del código se identificaron los siguientes punt
 | D2 | Comentarios TODO | Hay varios `// TODO:` sin resolver en el código | Revisar y resolver o eliminar |
 | D3 | Console.logs | Muchos logs de debug en producción | Crear sistema de logging condicional |
 
-### 8.5 Orden de Prioridad Post-Mejoras Actuales
+### 9.5 Orden de Prioridad Post-Mejoras Actuales
 
 Una vez completados los 3 problemas principales, se recomienda abordar en este orden:
 
@@ -756,5 +1035,13 @@ Una vez completados los 3 problemas principales, se recomienda abordar en este o
 
 ---
 
-**Última actualización:** Enero 2025
-**Estado general:** Listo para iniciar cuando Julián tenga el entorno configurado
+**Última actualización:** 5 de Enero 2026
+**Estado general:**
+- ✅ Problema 3 (Fechas): Completado y validado
+- ✅ Bug Login: Completado y validado
+- ✅ Problema 1 (Sync Kiosco): Completado y validado
+- ✅ Jornadas Partidas: Completado y validado (bug descubierto y corregido)
+- ✅ Kiosco Multi-Dispositivo: Código completado, pendiente validación con segundo dispositivo
+- ✅ Problema 2 (Hora Servidor): Completado y validado
+- ✅ Ajustes A1, A2, A6, A7, A8, A9: Completados
+- ⬜ Ajustes A4, A5, A10: Pendientes de revisión por Julián

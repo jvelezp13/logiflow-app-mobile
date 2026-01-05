@@ -10,6 +10,9 @@ import { attendanceRecordService } from '@services/storage';
 import type { AttendanceType, AttendanceRecord } from '@services/storage';
 import { useAuthStore } from '@store/authStore';
 import { notifyRecordCreated } from '@services/sync';
+import { supabase } from '@services/supabase/client';
+import { format } from 'date-fns';
+import { timeValidationService, type TimeValidationResult } from '@services/time';
 
 /**
  * Clock in/out data
@@ -33,6 +36,7 @@ export type AttendanceResult = {
   success: boolean;
   record?: AttendanceRecord;
   error?: string;
+  timeValidation?: TimeValidationResult;
 };
 
 /**
@@ -43,6 +47,7 @@ export const attendanceService = {
    * Clock in or out
    *
    * Creates local attendance record that will be synced automatically.
+   * Validates device time against server time before creating record.
    */
   async clock(data: ClockData): Promise<AttendanceResult> {
     try {
@@ -56,6 +61,26 @@ export const attendanceService = {
       if (!data.photoBase64) {
         throw new Error('Se requiere foto para el marcaje');
       }
+
+      // Validate device time against server
+      console.log('[AttendanceService] Validating device time...');
+      const timeValidation = await timeValidationService.validateTime();
+
+      if (!timeValidation.isValid) {
+        const errorMessage = timeValidationService.getTimeDiffMessage(timeValidation.diffMinutes);
+        console.warn('[AttendanceService] Time validation failed:', {
+          diffMinutes: timeValidation.diffMinutes,
+          message: errorMessage,
+        });
+
+        return {
+          success: false,
+          error: `${errorMessage}. Por favor ajusta la hora de tu dispositivo.`,
+          timeValidation,
+        };
+      }
+
+      console.log('[AttendanceService] Time validation passed');
 
       // Get kiosk PIN if in kiosk mode
       const authState = useAuthStore.getState();
@@ -83,6 +108,7 @@ export const attendanceService = {
       return {
         success: true,
         record,
+        timeValidation,
       };
     } catch (error) {
       console.error('[AttendanceService] Clock error:', error);
@@ -275,5 +301,65 @@ export const attendanceService = {
       ],
       { cancelable: false }
     );
+  },
+
+  /**
+   * Get last clock type from Supabase (cloud)
+   * Used by kiosk mode to check status across devices
+   */
+  async getLastClockTypeFromCloud(userCedula: string): Promise<AttendanceType | null> {
+    try {
+      const today = new Date();
+      const todayStr = format(today, 'yyyy-MM-dd');
+
+      console.log('[AttendanceService] Checking cloud status for:', { userCedula, todayStr });
+
+      // Query Supabase for today's records for this user
+      const { data, error } = await supabase
+        .from('horarios_registros_diarios')
+        .select('tipo_marcaje, timestamp_local')
+        .eq('cedula', userCedula)
+        .eq('fecha', todayStr)
+        .order('timestamp_local', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('[AttendanceService] Cloud query error:', error);
+        return null;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('[AttendanceService] No cloud records for today');
+        return null;
+      }
+
+      const lastRecord = data[0] as { tipo_marcaje: string; timestamp_local: number };
+      console.log('[AttendanceService] Last cloud record:', lastRecord);
+
+      return lastRecord.tipo_marcaje as AttendanceType;
+    } catch (error) {
+      console.error('[AttendanceService] Get cloud status error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Check if user can clock in (from cloud)
+   * Used by kiosk mode
+   */
+  async canClockInFromCloud(userCedula: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeFromCloud(userCedula);
+    // Can clock in if: never clocked today OR last was clock_out
+    return lastType === null || lastType === 'clock_out';
+  },
+
+  /**
+   * Check if user can clock out (from cloud)
+   * Used by kiosk mode
+   */
+  async canClockOutFromCloud(userCedula: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeFromCloud(userCedula);
+    // Can clock out if: last was clock_in
+    return lastType === 'clock_in';
   },
 };

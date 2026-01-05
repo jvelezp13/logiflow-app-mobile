@@ -7,7 +7,6 @@
 
 import React, { useEffect } from 'react';
 import { useAutoSync } from '@hooks/useAutoSync';
-import { useAuthStore } from '@store/authStore';
 
 /**
  * SyncProvider props
@@ -24,48 +23,37 @@ type SyncProviderProps = {
  * - App comes to foreground
  * - At regular intervals (configured in SYNC_CONFIG)
  * - Works in both normal and kiosk mode
+ *
+ * IMPORTANT: Sync runs ALWAYS, regardless of authentication state.
+ * This ensures kiosk mode records are synced even after the user logs out.
+ * The sync service uses the kioskPin stored in each record for authentication.
  */
 export const SyncProvider: React.FC<SyncProviderProps> = ({ children }) => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const isKioskAuthenticated = useAuthStore((state) => state.isKioskAuthenticated);
-
-  // User is authenticated in either normal or kiosk mode
-  const isAnyAuthenticated = isAuthenticated || isKioskAuthenticated;
-
   const { isSyncing, pendingCount, hasNetwork, error } = useAutoSync();
 
   /**
    * Log sync status changes
    */
   useEffect(() => {
-    if (isAnyAuthenticated) {
-      if (isSyncing) {
-        console.log('[SyncProvider] Syncing...');
-      } else if (error) {
-        console.error('[SyncProvider] Sync error:', error);
-      } else if (pendingCount > 0) {
-        console.log(`[SyncProvider] ${pendingCount} records pending sync`);
-      }
+    if (isSyncing) {
+      console.log('[SyncProvider] Syncing...');
+    } else if (error) {
+      console.error('[SyncProvider] Sync error:', error);
+    } else if (pendingCount > 0) {
+      console.log(`[SyncProvider] ${pendingCount} records pending sync`);
     }
-  }, [isSyncing, pendingCount, error, isAnyAuthenticated]);
+  }, [isSyncing, pendingCount, error]);
 
   /**
    * Log network status
    */
   useEffect(() => {
-    if (isAnyAuthenticated) {
-      if (hasNetwork) {
-        console.log('[SyncProvider] Network available');
-      } else {
-        console.log('[SyncProvider] Network unavailable');
-      }
+    if (hasNetwork) {
+      console.log('[SyncProvider] Network available');
+    } else {
+      console.log('[SyncProvider] Network unavailable');
     }
-  }, [hasNetwork, isAnyAuthenticated]);
-
-  // Don't run sync logic if not authenticated (neither normal nor kiosk)
-  if (!isAnyAuthenticated) {
-    return <>{children}</>;
-  }
+  }, [hasNetwork]);
 
   return <>{children}</>;
 };

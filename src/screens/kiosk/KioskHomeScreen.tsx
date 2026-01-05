@@ -70,23 +70,32 @@ export const KioskHomeScreen: React.FC = () => {
   }, [kioskUser]);
 
   /**
-   * Load today's attendance status
+   * Load today's attendance status from Supabase (cloud)
+   * This ensures kiosk mode sees attendance from ANY device
    */
   const loadAttendanceStatus = async () => {
-    if (!kioskUser?.user_id) return;
+    if (!kioskUser?.cedula) return;
 
     try {
       setIsLoading(true);
 
+      console.log('[KioskHomeScreen] Loading attendance status from cloud for:', kioskUser.cedula);
+
+      // Query Supabase (cloud) to get status across all devices
       const [canIn, canOut] = await Promise.all([
-        attendanceService.canClockIn(kioskUser.user_id),
-        attendanceService.canClockOut(kioskUser.user_id),
+        attendanceService.canClockInFromCloud(kioskUser.cedula),
+        attendanceService.canClockOutFromCloud(kioskUser.cedula),
       ]);
+
+      console.log('[KioskHomeScreen] Cloud status:', { canIn, canOut });
 
       setCanClockIn(canIn);
       setCanClockOut(canOut);
     } catch (error) {
       console.error('[KioskHomeScreen] Load attendance status error:', error);
+      // On error, default to allowing clock in
+      setCanClockIn(true);
+      setCanClockOut(false);
     } finally {
       setIsLoading(false);
     }

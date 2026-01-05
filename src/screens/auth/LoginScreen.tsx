@@ -26,7 +26,7 @@ import { styles } from './LoginScreen.styles';
 type Props = AuthStackScreenProps<'Login'>;
 
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  const { login, logout, isLoading, error, clearError, userCedula } = useAuth();
+  const { login, isLoading, error, clearError } = useAuth();
   const { enableKioskMode } = useAuthStore();
 
   const [email, setEmail] = useState('');
@@ -101,29 +101,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     // Attempt login
-    const success = await login(email.trim().toLowerCase(), password);
-
-    // Validate cedula after successful login
-    if (success) {
-      // Wait a bit for the store to update with user data
-      setTimeout(() => {
-        if (!userCedula) {
-          Alert.alert(
-            'Perfil Incompleto',
-            'Tu cuenta no tiene número de cédula registrado. Por favor contacta al administrador para completar tu perfil antes de usar la aplicación.',
-            [
-              {
-                text: 'Entendido',
-                onPress: async () => {
-                  await logout();
-                },
-              },
-            ],
-            { cancelable: false }
-          );
-        }
-      }, 500);
-    }
+    // Note: cedula validation is already done in auth.service.ts
+    // If login succeeds, the user has a valid cedula
+    await login(email.trim().toLowerCase(), password);
 
     // Navigation handled by RootNavigator
     // It will automatically switch to Main stack on successful auth
@@ -235,15 +215,6 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              ¿Problemas para acceder?
-            </Text>
-            <TouchableOpacity disabled={isLoading}>
-              <Text style={styles.footerLink}>
-                Contacta al administrador
-              </Text>
-            </TouchableOpacity>
-
             {/* Kiosk Mode Button */}
             <TouchableOpacity
               onPress={handleKioskMode}

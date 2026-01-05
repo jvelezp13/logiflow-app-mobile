@@ -89,11 +89,23 @@ export const signIn = async (
       .single<Profile>();
 
     if (profileError || !profile) {
+      console.log('[Auth] Profile error:', profileError);
       return {
         success: false,
         error: 'Error al cargar perfil de usuario',
       };
     }
+
+    // Debug: Log profile data
+    console.log('[Auth] Profile loaded:', {
+      id: profile.id,
+      user_id: profile.user_id,
+      nombre: profile.nombre,
+      cedula: profile.cedula,
+      cedulaType: typeof profile.cedula,
+      cedulaLength: profile.cedula?.length,
+      activo: profile.activo,
+    });
 
     // Check if user is active
     if (!profile.activo) {

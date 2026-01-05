@@ -89,16 +89,23 @@ export const useAutoSync = () => {
       // Update pending count
       const syncStatus = await syncService.getSyncStatus();
 
+      // Only show error if there were actual failures (not skipped due to lock)
+      // When sync is skipped due to lock, total will be 0 so it's not an error
+      const hasRealFailures = result.failed > 0 && result.total > 0;
+
       setStatus({
         isSyncing: false,
         lastSyncAt: Date.now(),
         pendingCount: syncStatus.pendingCount,
-        error: result.failed > 0 ? `${result.failed} registros fallaron` : null,
+        error: hasRealFailures ? `${result.failed} registros fallaron` : null,
       });
 
-      console.log(
-        `[AutoSync] Sync complete: ${result.synced} synced, ${result.failed} failed`
-      );
+      // Only log if something was actually processed
+      if (result.total > 0) {
+        console.log(
+          `[AutoSync] Sync complete: ${result.synced} synced, ${result.failed} failed`
+        );
+      }
     } catch (error) {
       console.error('[AutoSync] Sync error:', error);
 

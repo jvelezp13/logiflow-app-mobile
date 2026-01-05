@@ -13,6 +13,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
 import TipoNovedadPicker from './TipoNovedadPicker';
 import type { TipoNovedad } from '../../services/novedadesService';
 
@@ -83,7 +84,7 @@ const NovedadForm: React.FC<NovedadFormProps> = ({ onSubmit, loading = false }) 
 
     try {
       await onSubmit({
-        fecha: formData.fecha.toISOString().split('T')[0], // YYYY-MM-DD
+        fecha: format(formData.fecha, 'yyyy-MM-dd'), // Usa timezone local, no UTC
         tipo_novedad: formData.tipo_novedad!,
         motivo: formData.motivo.trim(),
         descripcion: formData.descripcion.trim() || undefined,

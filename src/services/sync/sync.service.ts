@@ -18,6 +18,12 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/upload-kiosk-photo`;
 
 /**
+ * Sync lock to prevent concurrent sync operations
+ * This prevents the "duplicate key" errors when multiple syncs run in parallel
+ */
+let isSyncInProgress = false;
+
+/**
  * Sync result type
  */
 export type SyncResult = {
@@ -108,11 +114,16 @@ export const syncService = {
     try {
       console.log('[SyncService] Uploading photo via Edge Function (kiosk mode)');
 
-      // Call Edge Function
+      // Get Supabase anon key for authorization
+      const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+      // Call Edge Function with Authorization header
       const response = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
           pin,
@@ -221,16 +232,17 @@ export const syncService = {
         timestamp_procesamiento: new Date().toISOString(),
       };
 
-      // Strategy: Check if record exists, then UPDATE or INSERT
-      // This avoids the onConflict constraint issue with partial unique indexes
+      // Strategy: Check if THIS EXACT record exists (by timestamp_local), then UPDATE or INSERT
+      // This allows multiple clock_in/clock_out per day (jornadas partidas)
+      // Each attendance record from the app has a unique timestamp_local
 
-      // Step 1: Check if record already exists
+      // Step 1: Check if THIS EXACT record already exists (same user, date, type AND timestamp)
       const { data: existingRecords, error: selectError } = await supabase
         .from('horarios_registros_diarios')
         .select('id')
         .eq('cedula', record.userCedula)
         .eq('fecha', record.date)
-        .eq('tipo_marcaje', record.attendanceType)
+        .eq('timestamp_local', record.timestamp)
         .limit(1);
 
       if (selectError) {
@@ -238,9 +250,9 @@ export const syncService = {
         return false;
       }
 
-      // Step 2: UPDATE if exists, INSERT if not
+      // Step 2: UPDATE if this exact record exists (re-sync), INSERT if new
       if (existingRecords && existingRecords.length > 0) {
-        // Record exists, update it
+        // This exact record exists (same timestamp), update it
         const existingId = (existingRecords[0] as { id: number }).id;
         const { error: updateError } = await supabase
           .from('horarios_registros_diarios')
@@ -253,15 +265,23 @@ export const syncService = {
           return false;
         }
 
-        console.log('[SyncService] Record updated successfully');
+        console.log('[SyncService] Record updated successfully (re-sync)');
       } else {
-        // Record doesn't exist, insert it
+        // New record, insert it (allows multiple entries/exits per day)
         const { error: insertError } = await supabase
           .from('horarios_registros_diarios')
           // @ts-expect-error - Supabase type inference issue with complex table schemas
           .insert(recordData);
 
         if (insertError) {
+          // Error 23505 = duplicate key, meaning the record already exists in Supabase
+          // This can happen if two sync processes run in parallel
+          // In this case, we consider it a success since the data is already there
+          if (insertError.code === '23505') {
+            console.log('[SyncService] Record already exists in Supabase (duplicate), marking as synced');
+            return true;
+          }
+
           console.error('[SyncService] Insert error:', insertError);
           return false;
         }
@@ -387,10 +407,24 @@ export const syncService = {
 
   /**
    * Sync all pending records
+   * Uses a lock to prevent concurrent sync operations that cause duplicate key errors
    *
    * @returns Batch sync result
    */
   async syncPendingRecords(): Promise<BatchSyncResult> {
+    // Prevent concurrent sync operations
+    if (isSyncInProgress) {
+      console.log('[SyncService] Sync already in progress, skipping...');
+      return {
+        total: 0,
+        synced: 0,
+        failed: 0,
+        results: [],
+      };
+    }
+
+    isSyncInProgress = true;
+
     try {
       console.log('[SyncService] Starting batch sync...');
 
@@ -460,6 +494,9 @@ export const syncService = {
         failed: 0,
         results: [],
       };
+    } finally {
+      // Always release the lock
+      isSyncInProgress = false;
     }
   },
 

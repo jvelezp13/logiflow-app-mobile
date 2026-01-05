@@ -12,7 +12,6 @@ import type { MainTabScreenProps } from '@/types/navigation.types';
 import { useAuth } from '@hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@components/ui/Button';
-import { ReminderSettings } from '@components/ReminderSettings';
 import { StatsSection } from '@components/StatsSection';
 import { DataManagement } from '@components/DataManagement';
 import { APP_CONFIG } from '@constants/config';
@@ -137,12 +136,6 @@ export const SettingsScreen: React.FC<Props> = () => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Estadísticas</Text>
         <StatsSection />
-      </View>
-
-      {/* Notifications Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recordatorios</Text>
-        <ReminderSettings />
       </View>
 
       {/* Data Management Section */}

@@ -1,13 +1,12 @@
 /**
  * DataManagement Component
  *
- * Manage local data (clear cache, reset database).
+ * Manage local data (force sync).
+ * Note: Reset database and clear notifications options removed for safety (A7).
  */
 
 import React, { useState } from 'react';
 import { View, Text, Alert } from 'react-native';
-import { dbUtils } from '@services/storage';
-import { notificationsService } from '@services/notifications';
 import { syncService } from '@services/sync';
 import { Button } from '@components/ui/Button';
 import { styles } from './DataManagement.styles';
@@ -50,84 +49,6 @@ export const DataManagement: React.FC = () => {
     }
   };
 
-  /**
-   * Clear all notifications
-   */
-  const handleClearNotifications = () => {
-    Alert.alert(
-      'Limpiar Notificaciones',
-      '¿Deseas cancelar todas las notificaciones programadas?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsProcessing(true);
-              await notificationsService.cancelAllNotifications();
-              Alert.alert('Éxito', 'Todas las notificaciones han sido canceladas.');
-            } catch (error) {
-              console.error('[DataManagement] Clear notifications error:', error);
-              Alert.alert('Error', 'No se pudieron cancelar las notificaciones.');
-            } finally {
-              setIsProcessing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  /**
-   * Reset database (DANGEROUS)
-   */
-  const handleResetDatabase = () => {
-    Alert.alert(
-      '⚠️ Resetear Base de Datos',
-      'ADVERTENCIA: Esto eliminará TODOS los datos locales de forma permanente.\n\n' +
-        '• Todos los marcajes no sincronizados se perderán\n' +
-        '• Esta acción NO se puede deshacer\n\n' +
-        '¿Estás completamente seguro?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Resetear',
-          style: 'destructive',
-          onPress: () => {
-            // Double confirmation
-            Alert.alert(
-              'Última Confirmación',
-              '¿REALMENTE deseas eliminar todos los datos locales?',
-              [
-                { text: 'No, cancelar', style: 'cancel' },
-                {
-                  text: 'Sí, eliminar todo',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      setIsProcessing(true);
-                      await dbUtils.resetDatabase();
-                      Alert.alert(
-                        'Base de Datos Reseteada',
-                        'Todos los datos locales han sido eliminados.'
-                      );
-                    } catch (error) {
-                      console.error('[DataManagement] Reset database error:', error);
-                      Alert.alert('Error', 'No se pudo resetear la base de datos.');
-                    } finally {
-                      setIsProcessing(false);
-                    }
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <View style={styles.container}>
       {/* Warning Card */}
@@ -146,28 +67,6 @@ export const DataManagement: React.FC = () => {
         loading={isProcessing}
         disabled={isProcessing}
         variant="outline"
-        style={styles.actionButton}
-      />
-
-      {/* Clear Notifications */}
-      <Button
-        title="Cancelar Todas las Notificaciones"
-        icon="🔕"
-        onPress={handleClearNotifications}
-        loading={isProcessing}
-        disabled={isProcessing}
-        variant="outline"
-        style={styles.actionButton}
-      />
-
-      {/* Reset Database */}
-      <Button
-        title="Resetear Base de Datos Local"
-        icon="⚠️"
-        onPress={handleResetDatabase}
-        loading={isProcessing}
-        disabled={isProcessing}
-        variant="danger"
         style={styles.actionButton}
       />
     </View>

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "temp-mobile-app",
-    "slug": "temp-mobile-app",
+    "name": "LogiFlow Marcaje",
+    "slug": "logiflow-marcaje",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

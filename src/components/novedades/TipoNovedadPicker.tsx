@@ -34,12 +34,6 @@ const TIPOS_OPTIONS: Array<{
     description: 'No pude asistir a trabajar'
   },
   {
-    value: 'incapacidad',
-    label: 'Incapacidad',
-    icon: 'hospital-box',
-    description: 'Ausencia por motivos médicos'
-  },
-  {
     value: 'permiso',
     label: 'Permiso',
     icon: 'file-check',

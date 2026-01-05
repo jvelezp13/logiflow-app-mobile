@@ -119,12 +119,13 @@ export const useCamera = (): UseCameraReturn => {
         if (!granted) return null;
       }
 
-      // Launch camera
+      // Launch camera (front-facing for selfie attendance photos)
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.7,
         exif: false,
+        cameraType: ImagePicker.CameraType.front,
       });
 
       if (result.canceled) {
