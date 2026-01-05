@@ -22,7 +22,6 @@ export type TipoNovedad =
   | 'entrada_tardia'
   | 'salida_temprana'
   | 'ausencia'
-  | 'incapacidad'
   | 'permiso'
   | 'otro';
 
@@ -49,10 +48,9 @@ export interface Novedad {
 }
 
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
-  entrada_tardia: 'Entrada tardía',
-  salida_temprana: 'Salida temprana',
+  entrada_tardia: 'Ajuste de entrada',
+  salida_temprana: 'Ajuste de salida',
   ausencia: 'Ausencia',
-  incapacidad: 'Incapacidad',
   permiso: 'Permiso',
   otro: 'Otro'
 };
@@ -90,19 +88,20 @@ class NovedadesService {
 
   /**
    * Sube una foto de evidencia a Supabase Storage
+   * Uses base64 encoding for React Native compatibility
    */
   async subirFotoEvidencia(userId: string, fotoUri: string): Promise<string | null> {
     try {
       const timestamp = Date.now();
       const filename = `novedades/${userId}/${timestamp}_evidencia.jpg`;
 
-      // Convertir URI a blob
+      // React Native: Read file as base64 and convert to ArrayBuffer
       const response = await fetch(fotoUri);
-      const blob = await response.blob();
+      const arrayBuffer = await response.arrayBuffer();
 
       const { data, error } = await supabase.storage
         .from('attendance_photos')
-        .upload(filename, blob, {
+        .upload(filename, arrayBuffer, {
           contentType: 'image/jpeg',
           upsert: false
         });

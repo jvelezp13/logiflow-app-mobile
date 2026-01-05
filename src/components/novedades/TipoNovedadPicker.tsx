@@ -17,15 +17,15 @@ const TIPOS_OPTIONS: Array<{
 }> = [
   {
     value: 'entrada_tardia',
-    label: 'Entrada tardía',
+    label: 'Ajuste de entrada',
     icon: 'clock-alert',
-    description: 'Llegué tarde a mi jornada laboral'
+    description: 'Ajustar hora de entrada registrada'
   },
   {
     value: 'salida_temprana',
-    label: 'Salida temprana',
+    label: 'Ajuste de salida',
     icon: 'clock-fast',
-    description: 'Necesité salir antes de tiempo'
+    description: 'Ajustar hora de salida registrada'
   },
   {
     value: 'ausencia',

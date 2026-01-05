@@ -576,6 +576,8 @@ Notas adicionales...
 | 2026-01-05 | A8 - Problemas acceder | Eliminar zona sin funcionalidad del LoginScreen | ✅ Completado | ⬜ APK |
 | 2026-01-05 | A9 - Icono App | Actualizar icono con reloj azul LogiFlow | ✅ Completado | ⬜ APK |
 | 2026-01-05 | Fix Duplicados | Mutex en sync para evitar errores 23505 en paralelo | ✅ Completado | ✅ |
+| 2026-01-05 | A5 - Labels Novedades | Renombrar "Entrada tardía" → "Ajuste de entrada", "Salida temprana" → "Ajuste de salida" | ✅ Completado | ⬜ APK |
+| 2026-01-05 | A10 - Fotos Novedades | Fix blob → arrayBuffer para subida de fotos en React Native | ✅ Completado | ⬜ APK |
 
 ### Detalle de Cambios del 2026-01-05
 
@@ -934,12 +936,12 @@ Estos ajustes fueron solicitados al desarrollador original pero no se confirmó 
 | A2 | Cámara frontal | Solicitar permiso para cámara frontal en vez de trasera para selfies de marcaje | ✅ Completado | Alta |
 | A3 | Marcajes con PIN | Los marcajes con PIN no quedan registrados en LogiFlow (relacionado con Problema 1) | ✅ Resuelto | Crítica |
 | A4 | Badge de sincronización | Hay marcajes "phantom" en el badge de sincronización | ⬜ Pendiente revisión | Media |
-| A5 | Novedades: Ajuste de hora | Cambiar "Entrada tardía" y "Salida temprana" por "Ajuste Entrada" y "Ajuste Salida". Debe permitir seleccionar a qué marcaje hace referencia y cuál es la hora nueva que se debe aplicar | ⬜ Pendiente revisión | Media |
+| A5 | Novedades: Ajuste de hora | Renombrar labels: "Entrada tardía" → "Ajuste de entrada", "Salida temprana" → "Ajuste de salida" | ✅ Completado | Media |
 | A6 | Eliminar Incapacidad | Eliminar la opción de incapacidad desde novedades en la app | ✅ Completado | Baja |
 | A7 | Eliminar opciones peligrosas | Eliminar opciones de "Borrar base de datos local" y "Notificaciones/Recordatorios" del módulo Ajustes | ✅ Completado | Media |
 | A8 | Zona "Problemas para acceder" | En la página de login, la zona "¿Problemas para acceder? Contacta al administrador" no tiene funcionalidad. Decidir si omitir o configurar | ✅ Completado (eliminada) | Baja |
 | A9 | Icono de la App | Actualizar con la imagen proporcionada (reloj azul) | ✅ Completado | Media |
-| A10 | Imagen de novedades | Revisar imagen en la sección de novedades | ⬜ Pendiente revisión | Baja |
+| A10 | Imagen de novedades | Fix: blob → arrayBuffer para subir fotos en React Native | ✅ Completado | Baja |
 
 ### 8.2 Detalle de Ajuste A5: Novedades de Ajuste de Hora
 
@@ -1043,5 +1045,58 @@ Una vez completados los 3 problemas principales, se recomienda abordar en este o
 - ✅ Jornadas Partidas: Completado y validado (bug descubierto y corregido)
 - ✅ Kiosco Multi-Dispositivo: Código completado, pendiente validación con segundo dispositivo
 - ✅ Problema 2 (Hora Servidor): Completado y validado
-- ✅ Ajustes A1, A2, A6, A7, A8, A9: Completados
-- ⬜ Ajustes A4, A5, A10: Pendientes de revisión por Julián
+- ✅ Ajustes A1, A2, A5, A6, A7, A8, A9, A10: Completados
+- ⬜ Ajuste A4 (Badge phantom): Pendiente revisión por Julián
+
+---
+
+## 10. Próxima Sesión - Contexto Inmediato
+
+### Problema Actual: Novedades no se pueden crear
+
+**Errores detectados en logs (adb logcat):**
+
+1. **Error RLS en Storage:**
+   ```
+   StorageApiError: new row violates row-level security policy
+   status: 400, statusCode: '403'
+   ```
+   - La política RLS del bucket `attendance_photos` no permite subir a carpeta `novedades/`
+
+2. **Error CHECK constraint en tabla:**
+   ```
+   code: '23514'
+   message: 'new row for relation "horarios_novedades" violates check constraint "chk_tipo_novedad"'
+   ```
+   - La BD tiene un constraint que valida valores de `tipo_novedad`
+   - Necesitamos ver qué valores acepta el constraint
+
+### Acciones pendientes con Supabase MCP:
+
+1. **Verificar constraint `chk_tipo_novedad`:**
+   ```sql
+   SELECT pg_get_constraintdef(c.oid)
+   FROM pg_constraint c
+   JOIN pg_class t ON c.conrelid = t.oid
+   WHERE t.relname = 'horarios_novedades'
+   AND c.conname = 'chk_tipo_novedad';
+   ```
+
+2. **Verificar/actualizar políticas RLS del bucket `attendance_photos`:**
+   - Agregar política para permitir INSERT en carpeta `novedades/`
+
+3. **Si el constraint no incluye nuestros valores**, actualizar:
+   ```sql
+   ALTER TABLE horarios_novedades DROP CONSTRAINT chk_tipo_novedad;
+   ALTER TABLE horarios_novedades ADD CONSTRAINT chk_tipo_novedad
+   CHECK (tipo_novedad IN ('entrada_tardia', 'salida_temprana', 'ausencia', 'permiso', 'otro'));
+   ```
+
+### MCP Supabase configurado:
+- URL: `https://mcp.supabase.com/mcp?project_ref=xzrhjeghgrjlhihspdcp`
+- Agregado con: `claude mcp add --scope project --transport http supabase`
+- **Requiere reinicio de Claude Code para activarse**
+
+### Credenciales Supabase (ya compartidas):
+- Project URL: `https://xzrhjeghgrjlhihspdcp.supabase.co`
+- Service Role Key: (guardada en configuración MCP)
