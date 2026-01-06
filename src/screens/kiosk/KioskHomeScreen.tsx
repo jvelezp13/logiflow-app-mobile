@@ -333,13 +333,14 @@ export const KioskHomeScreen: React.FC = () => {
                 title="Marcar Entrada"
                 onPress={handleClockIn}
                 disabled={!canClockIn || isProcessing}
+                variant="clockIn"
                 style={styles.clockButton}
               />
               <Button
                 title="Marcar Salida"
                 onPress={handleClockOut}
                 disabled={!canClockOut || isProcessing}
-                variant="outline"
+                variant="clockOut"
                 style={styles.clockButton}
               />
             </View>

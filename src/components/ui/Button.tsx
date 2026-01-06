@@ -14,7 +14,7 @@ import {
 import { styles } from './Button.styles';
 import { COLORS } from '@constants/theme';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost' | 'clockIn' | 'clockOut';
 
 export type ButtonProps = TouchableOpacityProps & {
   title: string;
@@ -39,6 +39,9 @@ export const Button: React.FC<ButtonProps> = ({
     variant === 'secondary' && styles.buttonSecondary,
     variant === 'outline' && styles.buttonOutline,
     variant === 'danger' && styles.buttonDanger,
+    variant === 'ghost' && styles.buttonGhost,
+    variant === 'clockIn' && styles.buttonClockIn,
+    variant === 'clockOut' && styles.buttonClockOut,
     isDisabled && styles.buttonDisabled,
     style,
   ];
@@ -48,6 +51,9 @@ export const Button: React.FC<ButtonProps> = ({
     variant === 'secondary' && styles.textSecondary,
     variant === 'outline' && styles.textOutline,
     variant === 'danger' && styles.textDanger,
+    variant === 'ghost' && styles.textGhost,
+    variant === 'clockIn' && styles.textClockIn,
+    variant === 'clockOut' && styles.textClockOut,
     isDisabled && styles.textDisabled,
   ];
 

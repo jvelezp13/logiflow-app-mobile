@@ -22,22 +22,19 @@ export const LocationStatusBanner: React.FC<LocationStatusBannerProps> = ({
   servicesStatus,
   onRequestPermission,
 }) => {
-  const [isAirplaneMode, setIsAirplaneMode] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   /**
-   * Monitor network connectivity for airplane mode detection
+   * Monitor network connectivity
    */
   useEffect(() => {
     // Subscribe to network state
     const unsubscribe = NetInfo.addEventListener((state) => {
-      // Airplane mode typically shows: no cellular, no wifi, no connection
-      const possibleAirplaneMode =
-        !state.isConnected && !state.isInternetReachable && state.type === 'none';
+      const offline = !state.isConnected || !state.isInternetReachable;
+      setIsOffline(offline);
 
-      setIsAirplaneMode(possibleAirplaneMode);
-
-      if (possibleAirplaneMode) {
-        console.log('[LocationStatus] Possible airplane mode detected');
+      if (offline) {
+        console.log('[LocationStatus] Device is offline');
       }
     });
 
@@ -60,21 +57,20 @@ export const LocationStatusBanner: React.FC<LocationStatusBannerProps> = ({
   };
 
   /**
-   * Show airplane mode info
+   * Show offline info
    */
-  const showAirplaneModeInfo = () => {
+  const showOfflineInfo = () => {
     Alert.alert(
-      '✈️ Modo avión detectado',
-      'Parece que el modo avión está activado.\n\n' +
-        '💡 Aunque el GPS puede funcionar en modo avión (si lo activas manualmente), ' +
-        'necesitarás conexión a internet para sincronizar tus marcajes más tarde.\n\n' +
+      '📡 Sin conexión',
+      'No tienes conexión a internet en este momento.\n\n' +
+        '💡 Puedes seguir marcando entrada y salida normalmente. ' +
         'Tus marcajes se guardarán localmente y se sincronizarán automáticamente cuando recuperes conexión.',
       [{ text: 'Entendido' }]
     );
   };
 
   // Don't show anything if everything is ready
-  if (servicesStatus.isReady && !isAirplaneMode) {
+  if (servicesStatus.isReady && !isOffline) {
     return null;
   }
 
@@ -123,18 +119,18 @@ export const LocationStatusBanner: React.FC<LocationStatusBannerProps> = ({
     );
   }
 
-  // Priority 3: Airplane mode (info only, not blocking)
-  if (isAirplaneMode) {
+  // Priority 3: Offline (info only, not blocking)
+  if (isOffline) {
     return (
       <View style={[styles.banner, styles.bannerInfo]}>
-        <Text style={styles.icon}>✈️</Text>
+        <Text style={styles.icon}>📡</Text>
         <View style={styles.content}>
-          <Text style={styles.title}>Modo avión</Text>
+          <Text style={styles.title}>Sin conexión</Text>
           <Text style={styles.message}>
-            Los marcajes se sincronizarán cuando tengas conexión
+            Tus marcajes se guardan localmente
           </Text>
         </View>
-        <TouchableOpacity onPress={showAirplaneModeInfo} style={styles.button}>
+        <TouchableOpacity onPress={showOfflineInfo} style={styles.button}>
           <Text style={styles.buttonText}>ℹ️</Text>
         </TouchableOpacity>
       </View>

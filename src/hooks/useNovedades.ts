@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import novedadesService, {
   type Novedad,
   type TipoNovedad,
@@ -14,6 +15,7 @@ export const useNovedades = () => {
   const [novedades, setNovedades] = useState<Novedad[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [estadisticas, setEstadisticas] = useState({
     pendientes: 0,
     aprobadas: 0,
@@ -22,18 +24,42 @@ export const useNovedades = () => {
   });
 
   /**
+   * Verifica si hay conexión a internet
+   */
+  const checkConnection = async (): Promise<boolean> => {
+    const state = await NetInfo.fetch();
+    const offline = !state.isConnected || !state.isInternetReachable;
+    setIsOffline(offline);
+    return !offline;
+  };
+
+  /**
    * Carga las novedades del usuario
    */
   const cargarNovedades = async (filtroEstado?: EstadoNovedad) => {
     try {
       setLoading(true);
       setError(null);
+
+      // Verificar conexión antes de intentar cargar
+      const hasConnection = await checkConnection();
+      if (!hasConnection) {
+        setNovedades([]);
+        return;
+      }
+
       const data = await novedadesService.obtenerNovedades(filtroEstado);
       setNovedades(data);
     } catch (err) {
-      const mensaje = err instanceof Error ? err.message : 'Error al cargar novedades';
-      setError(mensaje);
-      console.error('Error cargando novedades:', err);
+      // Solo loguear si no es error de conexión
+      const isNetworkError = err instanceof Error &&
+        (err.message.includes('network') || err.message.includes('Network') || err.message.includes('fetch'));
+
+      if (!isNetworkError) {
+        const mensaje = err instanceof Error ? err.message : 'Error al cargar novedades';
+        setError(mensaje);
+        console.error('Error cargando novedades:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -44,10 +70,20 @@ export const useNovedades = () => {
    */
   const cargarEstadisticas = async () => {
     try {
+      // No cargar si estamos offline
+      const hasConnection = await checkConnection();
+      if (!hasConnection) return;
+
       const stats = await novedadesService.obtenerEstadisticas();
       setEstadisticas(stats);
     } catch (err) {
-      console.error('Error cargando estadísticas:', err);
+      // Silenciar errores de red (son esperados offline)
+      const isNetworkError = err instanceof Error &&
+        (err.message.includes('network') || err.message.includes('Network') || err.message.includes('fetch'));
+
+      if (!isNetworkError) {
+        console.error('Error cargando estadísticas:', err);
+      }
     }
   };
 
@@ -62,6 +98,17 @@ export const useNovedades = () => {
     try {
       setLoading(true);
       setError(null);
+
+      // Verificar conexión antes de intentar crear
+      const hasConnection = await checkConnection();
+      if (!hasConnection) {
+        Alert.alert(
+          'Sin conexión',
+          'No puedes crear novedades sin conexión a internet. Intenta cuando tengas conexión.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
 
       // Obtener ubicación
       const ubicacion = await novedadesService.obtenerUbicacionActual();
@@ -184,6 +231,7 @@ export const useNovedades = () => {
     novedades,
     loading,
     error,
+    isOffline,
     estadisticas,
 
     // Funciones

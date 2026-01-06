@@ -28,7 +28,6 @@ export const KioskNavigator: React.FC = () => {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        animationEnabled: true,
       }}
     >
       {!isKioskAuthenticated ? (

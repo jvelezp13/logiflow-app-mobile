@@ -27,14 +27,14 @@ export const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES['2xl'],
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text,
     marginBottom: SPACING.md,
     textAlign: 'center',
   },
 
   description: {
     fontSize: FONT_SIZES.base,
-    color: COLORS.text.secondary,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
     lineHeight: 24,
@@ -42,7 +42,7 @@ export const styles = StyleSheet.create({
 
   note: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.text.tertiary,
+    color: COLORS.textTertiary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
     lineHeight: 20,
@@ -51,7 +51,7 @@ export const styles = StyleSheet.create({
 
   text: {
     fontSize: FONT_SIZES.base,
-    color: COLORS.text.secondary,
+    color: COLORS.textSecondary,
     marginTop: SPACING.md,
   },
 

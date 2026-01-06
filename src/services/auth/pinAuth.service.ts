@@ -49,7 +49,7 @@ export async function authenticateWithPin(pin: string): Promise<PinAuthResult> {
     // Call RPC function to authenticate
     const { data, error } = await supabase.rpc('authenticate_with_pin', {
       pin_input: pin,
-    });
+    } as never) as { data: PinUserData[] | null; error: { message: string } | null };
 
     if (error) {
       console.error('[PinAuthService] Authentication error:', error);
@@ -77,7 +77,7 @@ export async function authenticateWithPin(pin: string): Promise<PinAuthResult> {
     }
 
     // Extract user data (RPC returns array)
-    const userData = data[0] as PinUserData;
+    const userData = data[0];
 
     // Validate required fields
     if (!userData.user_id || !userData.cedula) {

@@ -84,7 +84,7 @@ export const attendanceService = {
 
       // Get kiosk PIN if in kiosk mode
       const authState = useAuthStore.getState();
-      const kioskPin = authState.isKioskAuthenticated ? authState.kioskPin : undefined;
+      const kioskPin = authState.isKioskAuthenticated ? (authState.kioskPin ?? undefined) : undefined;
 
       // Create attendance record in local database
       const record = await attendanceRecordService.create({

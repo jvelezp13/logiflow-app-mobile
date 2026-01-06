@@ -295,6 +295,52 @@ export const HomeScreen: React.FC = () => {
     });
   };
 
+  /**
+   * Calculate worked hours from today's records
+   * Pairs each clock_in with its corresponding clock_out
+   * If currently clocked in (no clock_out), calculates time until now
+   */
+  const calculateWorkedHours = (): { hours: number; isInProgress: boolean } => {
+    if (todayRecords.length === 0) {
+      return { hours: 0, isInProgress: false };
+    }
+
+    // Sort records by timestamp
+    const sortedRecords = [...todayRecords].sort((a, b) => a.timestamp - b.timestamp);
+
+    let totalHours = 0;
+    let isInProgress = false;
+    let lastClockIn: number | null = null;
+
+    for (const record of sortedRecords) {
+      if (record.attendanceType === 'clock_in') {
+        lastClockIn = record.timeDecimal;
+      } else if (record.attendanceType === 'clock_out' && lastClockIn !== null) {
+        totalHours += record.timeDecimal - lastClockIn;
+        lastClockIn = null;
+      }
+    }
+
+    // If there's an open clock_in (no clock_out yet), calculate time until now
+    if (lastClockIn !== null) {
+      const now = new Date();
+      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
+      totalHours += currentTimeDecimal - lastClockIn;
+      isInProgress = true;
+    }
+
+    return { hours: Math.max(0, totalHours), isInProgress };
+  };
+
+  /**
+   * Format hours as HH:MM
+   */
+  const formatWorkedHours = (hours: number): string => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       {/* Sync Badge */}
@@ -330,6 +376,21 @@ export const HomeScreen: React.FC = () => {
             <Text style={styles.currentDate}>{formatDate(currentTime)}</Text>
           </View>
 
+          {/* Worked Hours Summary - only show if there are records */}
+          {todayRecords.length > 0 && (() => {
+            const { hours, isInProgress } = calculateWorkedHours();
+            return (
+              <View style={styles.workedHoursContainerTop}>
+                <Text style={styles.workedHoursLabelTop}>
+                  Horas trabajadas{isInProgress ? ' (en curso)' : ''}
+                </Text>
+                <Text style={styles.workedHoursValueTop}>
+                  {formatWorkedHours(hours)}
+                </Text>
+              </View>
+            );
+          })()}
+
           {/* Clock Buttons */}
           {isLoading ? (
             <ActivityIndicator size="large" />
@@ -339,13 +400,14 @@ export const HomeScreen: React.FC = () => {
                 title="Marcar Entrada"
                 onPress={handleClockIn}
                 disabled={!canClockIn || isProcessing}
+                variant="clockIn"
                 style={styles.clockButton}
               />
               <Button
                 title="Marcar Salida"
                 onPress={handleClockOut}
                 disabled={!canClockOut || isProcessing}
-                variant="outline"
+                variant="clockOut"
                 style={styles.clockButton}
               />
             </View>

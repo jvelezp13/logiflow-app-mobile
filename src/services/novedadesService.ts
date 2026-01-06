@@ -99,7 +99,7 @@ class NovedadesService {
         .from('profiles')
         .select('cedula, nombre')
         .eq('user_id', user.id)
-        .single();
+        .single() as { data: { cedula: string; nombre: string } | null; error: unknown };
 
       if (profileError || !profile) {
         throw new Error('No se pudo obtener información del perfil');
@@ -116,7 +116,7 @@ class NovedadesService {
       // Insertar en la base de datos
       const { data: novedad, error } = await supabase
         .from('horarios_novedades')
-        .insert(novedadCompleta)
+        .insert(novedadCompleta as never)
         .select()
         .single();
 
@@ -216,11 +216,12 @@ class NovedadesService {
         return { pendientes: 0, aprobadas: 0, rechazadas: 0, total: 0 };
       }
 
+      const novedadesData = data as { estado: EstadoNovedad }[];
       const stats = {
-        pendientes: data.filter(n => n.estado === 'pendiente').length,
-        aprobadas: data.filter(n => n.estado === 'aprobada').length,
-        rechazadas: data.filter(n => n.estado === 'rechazada').length,
-        total: data.length
+        pendientes: novedadesData.filter(n => n.estado === 'pendiente').length,
+        aprobadas: novedadesData.filter(n => n.estado === 'aprobada').length,
+        rechazadas: novedadesData.filter(n => n.estado === 'rechazada').length,
+        total: novedadesData.length
       };
 
       return stats;

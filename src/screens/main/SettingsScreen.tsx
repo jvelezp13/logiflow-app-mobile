@@ -12,9 +12,7 @@ import type { MainTabScreenProps } from '@/types/navigation.types';
 import { useAuth } from '@hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@components/ui/Button';
-import { StatsSection } from '@components/StatsSection';
 import { DataManagement } from '@components/DataManagement';
-import { APP_CONFIG } from '@constants/config';
 import { COLORS } from '@constants/theme';
 import { styles } from './SettingsScreen.styles';
 
@@ -115,27 +113,6 @@ export const SettingsScreen: React.FC<Props> = () => {
             <Text style={styles.value}>{userCedula || 'N/A'}</Text>
           </View>
         </View>
-      </View>
-
-      {/* App Info Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Información de la App</Text>
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <Text style={styles.label}>Versión:</Text>
-            <Text style={styles.value}>{APP_CONFIG.version}</Text>
-          </View>
-          <View style={styles.profileRow}>
-            <Text style={styles.label}>Entorno:</Text>
-            <Text style={styles.value}>{APP_CONFIG.environment}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Statistics Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Estadísticas</Text>
-        <StatsSection />
       </View>
 
       {/* Data Management Section */}

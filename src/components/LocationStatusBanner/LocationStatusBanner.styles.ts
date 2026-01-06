@@ -50,13 +50,13 @@ export const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.base,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text,
     marginBottom: 2,
   },
 
   message: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
+    color: COLORS.textSecondary,
     lineHeight: 18,
   },
 
@@ -71,6 +71,6 @@ export const styles = StyleSheet.create({
   buttonText: {
     fontSize: FONT_SIZES.base,
     fontWeight: '600',
-    color: COLORS.text.primary,
+    color: COLORS.text,
   },
 });

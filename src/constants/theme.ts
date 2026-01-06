@@ -99,9 +99,11 @@ export const BORDER_RADIUS = {
 export const FONT_SIZES = {
   xs: scaleFontSize(12),
   sm: scaleFontSize(14),
+  base: scaleFontSize(16), // Alias for md
   md: scaleFontSize(16),
   lg: scaleFontSize(18),
   xl: scaleFontSize(20),
+  '2xl': scaleFontSize(24), // Alias for xxl
   xxl: scaleFontSize(24),
   xxxl: scaleFontSize(32),
 } as const;

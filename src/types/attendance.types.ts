@@ -44,11 +44,7 @@ export interface RemoteAttendanceRecord {
   fecha: string; // YYYY-MM-DD
   hora_inicio_decimal?: number; // Clock in time (decimal hours)
   hora_fin_decimal?: number; // Clock out time (decimal hours)
-  hora_inicio_original?: string; // HH:MM:SS
-  hora_fin_original?: string; // HH:MM:SS
-  horas_trabajadas?: number;
-  centro_trabajo?: string;
-  created_by: string; // User ID who created
+  tipo_marcaje?: string; // 'clock_in' | 'clock_out'
   observaciones?: string; // Notes/observations
 }
 

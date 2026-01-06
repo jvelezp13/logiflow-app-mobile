@@ -37,6 +37,19 @@ export const styles = StyleSheet.create({
     backgroundColor: COLORS.error,
     ...SHADOWS.md,
   },
+  buttonGhost: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  buttonClockIn: {
+    backgroundColor: COLORS.clockIn,
+    ...SHADOWS.md,
+  },
+  buttonClockOut: {
+    backgroundColor: COLORS.clockOut,
+    ...SHADOWS.md,
+  },
   buttonDisabled: {
     backgroundColor: COLORS.borderLight,
     opacity: 0.5,
@@ -58,6 +71,16 @@ export const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
   },
   textDanger: {
+    color: COLORS.textInverse,
+  },
+  textGhost: {
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  textClockIn: {
+    color: COLORS.textInverse,
+  },
+  textClockOut: {
     color: COLORS.textInverse,
   },
   textDisabled: {

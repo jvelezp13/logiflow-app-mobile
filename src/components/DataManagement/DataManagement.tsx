@@ -1,7 +1,7 @@
 /**
  * DataManagement Component
  *
- * Manage local data (force sync).
+ * Manage local data (force sync, verify sync integrity).
  * Note: Reset database and clear notifications options removed for safety (A7).
  */
 
@@ -13,6 +13,7 @@ import { styles } from './DataManagement.styles';
 
 export const DataManagement: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   /**
    * Force sync now
@@ -49,6 +50,77 @@ export const DataManagement: React.FC = () => {
     }
   };
 
+  /**
+   * Verify sync integrity
+   * Checks if local "synced" records actually exist in Supabase
+   */
+  const handleVerifySync = async () => {
+    try {
+      setIsVerifying(true);
+
+      const result = await syncService.verifySyncIntegrity(false);
+
+      if (result.orphanedRecords.length === 0) {
+        Alert.alert(
+          'Verificación Completa',
+          `✓ Todos los ${result.totalLocalSynced} registros locales están correctamente sincronizados con el servidor.`
+        );
+      } else {
+        // Found orphaned records - ask if user wants to repair
+        const orphanDetails = result.orphanedRecords
+          .map(r => `• ${r.date} ${r.time} (${r.type === 'clock_in' ? 'Entrada' : 'Salida'})`)
+          .join('\n');
+
+        Alert.alert(
+          'Problema Detectado',
+          `Se encontraron ${result.orphanedRecords.length} registro(s) marcados como sincronizados pero que no existen en el servidor:\n\n${orphanDetails}\n\n¿Deseas repararlos? Esto los marcará para re-sincronización.`,
+          [
+            {
+              text: 'Cancelar',
+              style: 'cancel',
+            },
+            {
+              text: 'Reparar',
+              style: 'default',
+              onPress: handleRepairSync,
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('[DataManagement] Verify sync error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      Alert.alert('Error', `No se pudo verificar: ${errorMessage}`);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  /**
+   * Repair orphaned records
+   */
+  const handleRepairSync = async () => {
+    try {
+      setIsVerifying(true);
+
+      const result = await syncService.verifySyncIntegrity(true);
+
+      if (result.repairedCount > 0) {
+        Alert.alert(
+          'Reparación Completa',
+          `Se marcaron ${result.repairedCount} registro(s) para re-sincronización.\n\nUsa "Forzar Sincronización" para enviarlos al servidor.`
+        );
+      } else {
+        Alert.alert('Info', 'No hubo registros que reparar.');
+      }
+    } catch (error) {
+      console.error('[DataManagement] Repair sync error:', error);
+      Alert.alert('Error', 'No se pudo reparar. Intenta nuevamente.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Warning Card */}
@@ -65,7 +137,18 @@ export const DataManagement: React.FC = () => {
         icon="🔄"
         onPress={handleForceSync}
         loading={isProcessing}
-        disabled={isProcessing}
+        disabled={isProcessing || isVerifying}
+        variant="outline"
+        style={styles.actionButton}
+      />
+
+      {/* Verify Sync */}
+      <Button
+        title="Verificar Sincronización"
+        icon="🔍"
+        onPress={handleVerifySync}
+        loading={isVerifying}
+        disabled={isProcessing || isVerifying}
         variant="outline"
         style={styles.actionButton}
       />

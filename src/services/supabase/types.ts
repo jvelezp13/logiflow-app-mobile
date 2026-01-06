@@ -63,10 +63,6 @@ export interface Database {
           fecha: string;
           hora_inicio_decimal: number | null;
           hora_fin_decimal: number | null;
-          horas_trabajadas: number | null;
-          horas_extras: number | null;
-          jornada_completa: boolean | null;
-          tiene_extras: boolean | null;
           timestamp_procesamiento: string | null;
           created_at: string | null;
           updated_at: string | null;
@@ -89,10 +85,6 @@ export interface Database {
           fecha: string;
           hora_inicio_decimal?: number | null;
           hora_fin_decimal?: number | null;
-          horas_trabajadas?: number | null;
-          horas_extras?: number | null;
-          jornada_completa?: boolean | null;
-          tiene_extras?: boolean | null;
           timestamp_procesamiento?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
@@ -114,10 +106,6 @@ export interface Database {
           fecha?: string;
           hora_inicio_decimal?: number | null;
           hora_fin_decimal?: number | null;
-          horas_trabajadas?: number | null;
-          horas_extras?: number | null;
-          jornada_completa?: boolean | null;
-          tiene_extras?: boolean | null;
           timestamp_procesamiento?: string | null;
           created_at?: string | null;
           updated_at?: string | null;

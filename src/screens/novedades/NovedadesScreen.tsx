@@ -2,16 +2,20 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import { TabView, TabBar } from 'react-native-tab-view';
 import NovedadesList from '../../components/novedades/NovedadesList';
 import useNovedades from '../../hooks/useNovedades';
 import type { Novedad, EstadoNovedad } from '../../services/novedadesService';
+import type { NovedadesStackParamList } from '../../types/navigation.types';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
+type NovedadesNavigationProp = StackNavigationProp<NovedadesStackParamList, 'NovedadesList'>;
+
 const NovedadesScreen: React.FC = () => {
-  const navigation = useNavigation();
-  const { novedades, loading, estadisticas, cargarNovedades } = useNovedades();
+  const navigation = useNavigation<NovedadesNavigationProp>();
+  const { novedades, loading, isOffline, estadisticas, cargarNovedades } = useNovedades();
 
   const [index, setIndex] = useState(0);
   const [routes] = useState([
@@ -22,7 +26,7 @@ const NovedadesScreen: React.FC = () => {
   ]);
 
   const handleNovedadPress = (novedad: Novedad) => {
-    navigation.navigate('DetalleNovedad' as never, { novedadId: novedad.id } as never);
+    navigation.navigate('DetalleNovedad', { novedadId: novedad.id });
   };
 
   const handleRefresh = async () => {
@@ -30,7 +34,7 @@ const NovedadesScreen: React.FC = () => {
   };
 
   const handleCrearNovedad = () => {
-    navigation.navigate('CrearNovedad' as never);
+    navigation.navigate('CrearNovedad');
   };
 
   const renderScene = ({ route }: { route: { key: string } }) => {
@@ -58,6 +62,7 @@ const NovedadesScreen: React.FC = () => {
         refreshing={loading}
         onRefresh={handleRefresh}
         loading={loading && novedades.length === 0}
+        isOffline={isOffline}
       />
     );
   };
@@ -72,7 +77,7 @@ const NovedadesScreen: React.FC = () => {
       activeColor="#059669"
       inactiveColor="#374151"
       scrollEnabled
-      renderBadge={({ route }) => {
+      renderBadge={({ route }: { route: { key: string } }) => {
         let count = 0;
         switch (route.key) {
           case 'todas':

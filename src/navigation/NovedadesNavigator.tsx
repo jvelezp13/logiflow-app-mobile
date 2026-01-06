@@ -26,7 +26,6 @@ export const NovedadesNavigator: React.FC = () => {
         headerTitleStyle: {
           fontWeight: '600',
         },
-        headerBackTitleVisible: false,
       }}
     >
       <Stack.Screen

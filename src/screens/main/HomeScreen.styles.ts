@@ -132,4 +132,23 @@ export const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
+  workedHoursContainerTop: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.primaryLight + '20',
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
+  },
+  workedHoursLabelTop: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  workedHoursValueTop: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.primary,
+  },
 });

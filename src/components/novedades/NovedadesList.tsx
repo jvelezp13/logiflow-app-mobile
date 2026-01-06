@@ -11,6 +11,7 @@ interface NovedadesListProps {
   refreshing?: boolean;
   onRefresh?: () => void;
   loading?: boolean;
+  isOffline?: boolean;
 }
 
 const NovedadesList: React.FC<NovedadesListProps> = ({
@@ -20,6 +21,7 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
   refreshing = false,
   onRefresh,
   loading = false,
+  isOffline = false,
 }) => {
   const novedadesFiltradas = filtroEstado
     ? novedades.filter(n => n.estado === filtroEstado)
@@ -31,6 +33,24 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color="#059669" />
           <Text style={styles.emptyText}>Cargando novedades...</Text>
+        </View>
+      );
+    }
+
+    // Mensaje especial cuando está offline
+    if (isOffline) {
+      return (
+        <View style={styles.emptyContainer}>
+          <MaterialCommunityIcons
+            name="wifi-off"
+            size={64}
+            color="#D1D5DB"
+          />
+          <Text style={styles.emptyText}>Sin conexión</Text>
+          <Text style={styles.emptySubtext}>
+            Las novedades requieren conexión a internet.{'\n'}
+            Intenta de nuevo cuando tengas conexión.
+          </Text>
         </View>
       );
     }
