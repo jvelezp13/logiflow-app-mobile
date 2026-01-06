@@ -70,30 +70,15 @@ export const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
-  statsContainer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+  sectionHeader: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    marginTop: SPACING.sm,
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: SPACING.md,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.primary,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.sm,
+  sectionHeaderText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
     color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
   },
   loadingContainer: {
     flex: 1,

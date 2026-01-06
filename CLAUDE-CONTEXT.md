@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 5 de Enero 2026 (Sesión 4)
+**Última actualización:** 5 de Enero 2026 (Sesión 7)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -234,19 +234,101 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 4. **Novedades simplificadas:** Solo requieren fecha, tipo y motivo. Sin foto ni descripción adicional (columnas eliminadas de DB el 5 Ene 2026).
 
+5. **Solo datos crudos en DB:** La tabla `horarios_registros_diarios` solo almacena datos crudos del marcaje. Los cálculos (horas trabajadas, extras, etc.) se hacen en reportes/Web Admin, no en la app móvil.
+
+6. **Pull de historial optimizado:** Al abrir Historial, se hace pull de Supabase (una sola vez por sesión) para traer registros de otros dispositivos. Limitado a últimos 90 días y campos mínimos para eficiencia en equipos antiguos.
+
 ---
 
 ## Pendientes Conocidos
+
+### ✓ RESUELTO: Integridad de Sincronización (Sesión 6)
+
+**Síntoma detectado:** Registro (entrada 14:19) marcado como "synced" en WatermelonDB local pero ausente en Supabase.
+
+**Solución implementada:** Función "Verificar Sincronización" en Settings > Gestión de Datos
+- Compara registros locales "synced" contra Supabase por `timestamp_local`
+- Detecta y lista registros huérfanos
+- Opción de reparar: re-marca como "pending" para re-sincronización automática
 
 ### Futuro: Web Admin Next.js
 
 - Reconstruir desde cero con Next.js + Supabase
 - Incluir: Dashboard, Fotos con mapa, Reportes, Gestión empleados
 - Usar la misma base de datos Supabase
+- El Web Admin v2 actual queda "congelado" (no mantener)
 
 ---
 
 ## Historial de Sesiones
+
+### 5 de Enero 2026 (Sesión 7)
+- **Rediseño completo de Historial:**
+  - Cambiado de FlatList a SectionList con agrupación por fecha ("Hoy", "Ayer", "Lunes 6 de enero")
+  - Simplificado AttendanceCard a formato compacto de fila (icono, tipo, hora, estado sync)
+  - Eliminada foto y ubicación del historial (no aportaban valor en esta vista)
+  - Eliminada sección de estadísticas (Entradas/Salidas) redundante
+  - Eliminado refresh falso que no hacía nada
+- **Implementado pull desde Supabase:**
+  - Nuevo método `pullFromSupabase(userCedula)` en `sync.service.ts`
+  - Nuevo método `createFromRemote()` en `attendanceRecord.service.ts`
+  - Actualizado `useAttendanceRecords` hook para hacer pull automático al abrir Historial
+  - Soporta rotación de dispositivos y modo kiosco (trae historial de otros equipos)
+- **Optimizaciones de rendimiento:**
+  - Limitado pull a últimos 90 días (vs 500 registros arbitrarios)
+  - Reducido SELECT de 11 a 7 campos esenciales (~40% menos datos)
+  - Eliminados campos no usados en historial: foto_url, observaciones, latitud, longitud
+  - Pull se ejecuta una sola vez por sesión (useRef para evitar duplicados)
+
+### 5 de Enero 2026 (Sesión 6)
+- Investigación de problema de sincronización: registro 14:19 ausente en Supabase
+- Identificado que WatermelonDB tiene 14 registros pero Supabase solo 13
+- **Implementado:** Función "Verificar Sincronización" en DataManagement
+  - Nuevo método `verifySyncIntegrity()` en `sync.service.ts`
+  - Compara registros locales "synced" contra Supabase por `timestamp_local`
+  - Detecta registros huérfanos (marcados como synced pero no en servidor)
+  - Opción de reparar: re-marca como "pending" para re-sincronización
+  - Nuevos métodos en `attendanceRecord.service.ts`: `getSyncedRecords()`, `markAsPending()`
+  - Nuevo botón "Verificar Sincronización" en Settings > Gestión de Datos
+- **Validado:** Registro 14:19 recuperado exitosamente - ahora 14 registros en Supabase
+- **Limpieza de Settings:** Eliminadas secciones redundantes
+  - Removida sección "Información de la App" (versión y entorno)
+  - Removida sección "Estadísticas" (StatsSection) - info redundante con Home
+  - Eliminado import de `APP_CONFIG` y `StatsSection` de SettingsScreen
+- **Mejorado banner de conexión:** En `LocationStatusBanner`
+  - Cambiado "Modo avión" → "Sin conexión" (más claro y genérico)
+  - Mensaje: "Tus marcajes se guardan localmente"
+  - Aplica cuando no hay WiFi, datos o cualquier conexión (no solo modo avión)
+- **Mejorado manejo offline en Novedades:**
+  - `useNovedades.ts`: Verifica conexión antes de llamar Supabase, silencia errores de red esperados
+  - `NovedadesList.tsx`: Muestra mensaje "Sin conexión" con icono wifi-off cuando está offline
+  - `NovedadesScreen.tsx`: Pasa estado `isOffline` al componente de lista
+  - Si intenta crear novedad offline, muestra alerta explicativa
+- **Limpieza de errores TypeScript:** Todos los errores de TypeScript resueltos
+  - Instalado `@expo/vector-icons` (faltaba el paquete)
+  - Arreglados tipos de Supabase (`never`) en `novedadesService.ts` y `pinAuth.service.ts` con casting explícito
+  - Removidas opciones de navegación obsoletas (`animationEnabled`, `headerBackTitleVisible`) en React Navigation 7
+  - Agregada variante `ghost` a componente `Button`
+  - Agregados alias `base` y `'2xl'` a `FONT_SIZES` en `theme.ts`
+  - Corregido tipo de `kioskPin` en `attendance.service.ts` (null → undefined)
+  - Tipado correcto de navegación en `NovedadesScreen.tsx`
+  - Corregidos estilos que usaban `COLORS.text.primary` → `COLORS.text`
+- **Mejora visual botones de marcaje:**
+  - Agregadas variantes `clockIn` (verde) y `clockOut` (rojo) al componente Button
+  - Actualizados HomeScreen y KioskHomeScreen para usar las nuevas variantes
+  - Colores: entrada usa `COLORS.clockIn` (#10b981), salida usa `COLORS.clockOut` (#ef4444)
+
+### 5 de Enero 2026 (Sesión 5)
+- Eliminadas 4 columnas de cálculos derivados de `horarios_registros_diarios`:
+  - `horas_trabajadas`, `horas_extras`, `jornada_completa`, `tiene_extras`
+- Actualizado código de sincronización (`sync.service.ts`) para no calcular estos valores
+- Actualizados tipos TypeScript en app móvil
+- **Nueva funcionalidad:** Mostrar "Horas trabajadas (en curso)" en HomeScreen
+  - Calcula sumando todos los pares entrada-salida del día
+  - Si hay entrada abierta, calcula hasta hora actual
+  - Ubicado entre la fecha y los botones de marcar
+- **Decisión:** Solo guardar datos crudos en DB, cálculos se harán en Web Admin futuro
+- **Decisión:** Mantener timestamps en UTC en DB, hora local en `hora_*_decimal`. Conversión solo al mostrar en Web Admin
 
 ### 5 de Enero 2026 (Sesión 4)
 - Configurado Web Admin local (puerto 8080) para visualización

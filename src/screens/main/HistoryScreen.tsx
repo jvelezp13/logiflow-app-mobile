@@ -1,17 +1,16 @@
 /**
  * HistoryScreen
  *
- * Display attendance history with filters and statistics.
+ * Display attendance history grouped by date with statistics.
  */
 
 import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@hooks/useAuth';
@@ -19,43 +18,65 @@ import { useAttendanceRecords, type DateFilter } from '@hooks/useAttendanceRecor
 import { AttendanceCard } from '@components/AttendanceCard';
 import type { AttendanceRecord } from '@services/storage';
 import { styles } from './HistoryScreen.styles';
+import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+type Section = {
+  title: string;
+  data: AttendanceRecord[];
+};
 
 export const HistoryScreen: React.FC = () => {
-  const { user } = useAuth();
+  const { user, userCedula } = useAuth();
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { records, isLoading } = useAttendanceRecords(user?.id, dateFilter);
+  // Pass userCedula to enable pulling records from Supabase
+  const { records, isLoading, isPulling } = useAttendanceRecords(
+    user?.id,
+    dateFilter,
+    userCedula
+  );
 
   /**
-   * Calculate statistics
+   * Group records by date for SectionList
    */
-  const stats = useMemo(() => {
-    const total = records.length;
-    const synced = records.filter((r) => r.isSynced).length;
-    const pending = records.filter((r) => r.needsSync).length;
+  const sections = useMemo((): Section[] => {
+    const grouped: Record<string, AttendanceRecord[]> = {};
 
-    return { total, synced, pending };
+    records.forEach((record) => {
+      const dateKey = record.date; // yyyy-MM-dd format
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(record);
+    });
+
+    // Convert to sections array and format titles
+    return Object.entries(grouped)
+      .sort(([a], [b]) => b.localeCompare(a)) // Sort by date descending
+      .map(([dateKey, data]) => {
+        const date = parseISO(dateKey);
+        let title: string;
+
+        if (isToday(date)) {
+          title = 'Hoy';
+        } else if (isYesterday(date)) {
+          title = 'Ayer';
+        } else {
+          // "Lunes 6 de enero"
+          title = format(date, "EEEE d 'de' MMMM", { locale: es });
+          // Capitalize first letter
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+        }
+
+        return { title, data };
+      });
   }, [records]);
-
-  /**
-   * Handle refresh
-   */
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    // Records are reactive, just wait a bit for effect
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 500);
-  };
 
   /**
    * Render filter button
    */
-  const renderFilterButton = (
-    filter: DateFilter,
-    label: string
-  ) => {
+  const renderFilterButton = (filter: DateFilter, label: string) => {
     const isActive = dateFilter === filter;
 
     return (
@@ -82,10 +103,13 @@ export const HistoryScreen: React.FC = () => {
    * Render empty state
    */
   const renderEmpty = () => {
-    if (isLoading) {
+    if (isLoading || isPulling) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
+          {isPulling && (
+            <Text style={styles.emptySubtext}>Sincronizando historial...</Text>
+          )}
         </View>
       );
     }
@@ -100,6 +124,15 @@ export const HistoryScreen: React.FC = () => {
       </View>
     );
   };
+
+  /**
+   * Render section header
+   */
+  const renderSectionHeader = ({ section }: { section: Section }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+    </View>
+  );
 
   /**
    * Render item
@@ -118,40 +151,16 @@ export const HistoryScreen: React.FC = () => {
         {renderFilterButton('all', 'Todos')}
       </View>
 
-      {/* Statistics */}
-      {records.length > 0 && (
-        <View style={styles.statsContainer}>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.total}</Text>
-              <Text style={styles.statLabel}>Total</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.synced}</Text>
-              <Text style={styles.statLabel}>Sincronizados</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.pending}</Text>
-              <Text style={styles.statLabel}>Pendientes</Text>
-            </View>
-          </View>
-        </View>
-      )}
-
       {/* List */}
       <View style={styles.content}>
-        <FlatList
-          data={records}
+        <SectionList
+          sections={sections}
           renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListEmptyComponent={renderEmpty}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-            />
-          }
+          stickySectionHeadersEnabled={false}
         />
       </View>
     </SafeAreaView>

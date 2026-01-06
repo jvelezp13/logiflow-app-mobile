@@ -2,13 +2,15 @@
  * useAttendanceRecords Hook
  *
  * Reactive hook for attendance records using WatermelonDB observables.
+ * Automatically pulls records from Supabase on first load.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '@services/storage';
 import type { AttendanceRecord } from '@services/storage';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { syncService } from '@services/sync/sync.service';
+import { format } from 'date-fns';
 
 /**
  * Date filter options
@@ -17,18 +19,48 @@ export type DateFilter = 'today' | 'week' | 'month' | 'all';
 
 /**
  * Hook to get attendance records with reactive updates
+ * Now also pulls records from Supabase that don't exist locally
  *
- * @param userId - User ID
+ * @param userId - User ID (for local DB query)
  * @param dateFilter - Date filter option
- * @returns Attendance records array
+ * @param userCedula - User cedula (for pulling from Supabase)
+ * @returns Attendance records array and pull status
  */
 export const useAttendanceRecords = (
   userId: string | undefined,
-  dateFilter: DateFilter = 'all'
+  dateFilter: DateFilter = 'all',
+  userCedula?: string | null
 ) => {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullResult, setPullResult] = useState<{ pulled: number } | null>(null);
+  const hasPulled = useRef(false);
 
+  // Pull records from Supabase on first load (if cedula provided)
+  useEffect(() => {
+    if (!userCedula || hasPulled.current) return;
+
+    const pullRecords = async () => {
+      setIsPulling(true);
+      try {
+        const result = await syncService.pullFromSupabase(userCedula);
+        if (result.success && result.pulled > 0) {
+          console.log(`[useAttendanceRecords] Pulled ${result.pulled} records from Supabase`);
+          setPullResult({ pulled: result.pulled });
+        }
+      } catch (error) {
+        console.error('[useAttendanceRecords] Pull error:', error);
+      } finally {
+        setIsPulling(false);
+        hasPulled.current = true;
+      }
+    };
+
+    pullRecords();
+  }, [userCedula]);
+
+  // Subscribe to local records (reactive)
   useEffect(() => {
     if (!userId) {
       setRecords([]);
@@ -43,6 +75,8 @@ export const useAttendanceRecords = (
       const collection = database.get<AttendanceRecord>('attendance_records');
       const now = new Date();
 
+      // For records pulled from Supabase, userId = cedula
+      // So we need to query by both userId OR userCedula matching the userId
       let queries: any[] = [Q.where('user_id', userId)];
 
       switch (dateFilter) {
@@ -94,6 +128,8 @@ export const useAttendanceRecords = (
   return {
     records,
     isLoading,
+    isPulling,
+    pullResult,
   };
 };
 

@@ -375,4 +375,129 @@ export const attendanceRecordService = {
       return 0;
     }
   },
+
+  /**
+   * Get records marked as synced
+   */
+  async getSyncedRecords(): Promise<AttendanceRecord[]> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.where('sync_status', 'synced'),
+          Q.sortBy('timestamp', Q.asc)
+        )
+        .fetch();
+      return records;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get synced records error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Mark record as pending (for re-sync)
+   */
+  async markAsPending(recordId: string): Promise<void> {
+    try {
+      await this.update(recordId, {
+        syncStatus: 'pending',
+        syncError: undefined,
+        syncAttempts: 0,
+      });
+      console.log('[AttendanceRecordService] Record marked as pending for re-sync:', recordId);
+    } catch (error) {
+      console.error('[AttendanceRecordService] Mark as pending error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Create record from remote data (pulled from Supabase)
+   * Used to populate local DB with records from other devices
+   * Optimized: only requires essential fields, optional fields for backwards compat
+   */
+  async createFromRemote(data: {
+    cedula: string;
+    empleado: string;
+    fecha: string;
+    tipo_marcaje: AttendanceType;
+    timestamp_local: number;
+    hora_inicio_decimal: number | null;
+    hora_fin_decimal: number | null;
+    // Optional fields (not fetched in optimized pull)
+    foto_url?: string | null;
+    observaciones?: string | null;
+    latitud?: number | null;
+    longitud?: number | null;
+  }): Promise<AttendanceRecord | null> {
+    try {
+      // Check if record already exists locally by timestamp
+      const existing = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(Q.where('timestamp', data.timestamp_local))
+        .fetch();
+
+      if (existing.length > 0) {
+        console.log('[AttendanceRecordService] Record already exists locally:', data.timestamp_local);
+        return existing[0];
+      }
+
+      // Calculate time from decimal
+      const timeDecimal = data.hora_inicio_decimal || data.hora_fin_decimal || 0;
+      const hours = Math.floor(timeDecimal);
+      const minutes = Math.round((timeDecimal - hours) * 60);
+      const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+
+      const record = await database.write(async () => {
+        return await database.get<AttendanceRecord>('attendance_records').create((rec) => {
+          // We don't have userId from remote, use cedula as identifier
+          rec.userId = data.cedula;
+          rec.userCedula = data.cedula;
+          rec.userName = data.empleado;
+          rec.attendanceType = data.tipo_marcaje;
+          rec.timestamp = data.timestamp_local;
+          rec.date = data.fecha;
+          rec.time = timeStr;
+          rec.timeDecimal = timeDecimal;
+          rec.photoUrl = data.foto_url || undefined;
+          rec.photoUploaded = !!data.foto_url;
+          rec.observations = data.observaciones || undefined;
+          rec.latitude = data.latitud || undefined;
+          rec.longitude = data.longitud || undefined;
+          // Mark as synced since it came from server
+          rec.attendanceSyncStatus = 'synced';
+          rec.syncedAt = Date.now();
+          rec.syncAttempts = 0;
+        });
+      });
+
+      console.log('[AttendanceRecordService] Created record from remote:', {
+        id: record.id,
+        timestamp: data.timestamp_local,
+        date: data.fecha,
+      });
+
+      return record;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Create from remote error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get all local timestamps (for comparison with remote)
+   */
+  async getAllTimestamps(): Promise<number[]> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query()
+        .fetch();
+      return records.map(r => r.timestamp);
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get all timestamps error:', error);
+      return [];
+    }
+  },
 };

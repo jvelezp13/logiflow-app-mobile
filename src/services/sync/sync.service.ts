@@ -33,6 +33,32 @@ export type SyncResult = {
 };
 
 /**
+ * Sync verification result
+ */
+export type SyncVerificationResult = {
+  totalLocalSynced: number;
+  totalInSupabase: number;
+  orphanedRecords: Array<{
+    id: string;
+    timestamp: number;
+    date: string;
+    time: string;
+    type: string;
+  }>;
+  repairedCount: number;
+};
+
+/**
+ * Pull from Supabase result type
+ */
+export type PullResult = {
+  success: boolean;
+  pulled: number;
+  alreadyLocal: number;
+  error?: string;
+};
+
+/**
  * Batch sync result
  */
 export type BatchSyncResult = {
@@ -163,55 +189,19 @@ export const syncService = {
    */
   async syncRecord(record: AttendanceRecord, photoUrl?: string): Promise<boolean> {
     try {
-      // Calculate hours worked if clock_out
-      let horasTrabajadas = 0;
-      let horasExtras = 0;
-      let jornadaCompleta = false;
-      let tieneExtras = false;
-
-      if (record.attendanceType === 'clock_out') {
-        // Try to find the clock_in record for the same day
-        const { data: clockInRecords, error: selectError } = await supabase
-          .from('horarios_registros_diarios')
-          .select('hora_inicio_decimal')
-          .eq('cedula', record.userCedula)
-          .eq('fecha', record.date)
-          .eq('tipo_marcaje', 'clock_in')
-          .limit(1);
-
-        const clockInRecord = clockInRecords?.[0] as { hora_inicio_decimal: number | null } | undefined;
-
-        if (!selectError && clockInRecord?.hora_inicio_decimal != null) {
-          // Calculate worked hours
-          horasTrabajadas = record.timeDecimal - clockInRecord.hora_inicio_decimal;
-
-          // Determine if full day (8+ hours)
-          jornadaCompleta = horasTrabajadas >= 8;
-
-          // Calculate overtime (more than 8 hours)
-          if (horasTrabajadas > 8) {
-            horasExtras = horasTrabajadas - 8;
-            tieneExtras = true;
-          }
-        }
-      }
-
       // Prepare data for horarios_registros_diarios table
+      // Only raw data is stored - calculations are done in reports/Web Admin
       const recordData = {
         // Employee identification
         empleado: record.userName,
         cedula: record.userCedula,
         fecha: record.date,
 
-        // Time data
+        // Time data (raw)
         hora_inicio_decimal:
           record.attendanceType === 'clock_in' ? record.timeDecimal : null,
         hora_fin_decimal:
           record.attendanceType === 'clock_out' ? record.timeDecimal : null,
-        horas_trabajadas: horasTrabajadas,
-        horas_extras: horasExtras,
-        jornada_completa: jornadaCompleta,
-        tiene_extras: tieneExtras,
 
         // Mobile-specific fields
         foto_url: photoUrl || null,
@@ -531,6 +521,223 @@ export const syncService = {
       return {
         pendingCount: 0,
         hasNetwork: false,
+      };
+    }
+  },
+
+  /**
+   * Verify sync integrity
+   * Compares local "synced" records against Supabase to find orphaned records
+   * Optionally repairs by marking orphaned records as pending
+   *
+   * @param repair - If true, marks orphaned records as pending for re-sync
+   * @returns Verification result
+   */
+  async verifySyncIntegrity(repair: boolean = false): Promise<SyncVerificationResult> {
+    try {
+      console.log('[SyncService] Starting sync integrity verification...');
+
+      // Check network
+      const hasNetwork = await checkNetworkStatus();
+      if (!hasNetwork) {
+        throw new Error('Sin conexión a Internet');
+      }
+
+      // Get all local records marked as synced
+      const localSyncedRecords = await attendanceRecordService.getSyncedRecords();
+      console.log(`[SyncService] Found ${localSyncedRecords.length} local records marked as synced`);
+
+      if (localSyncedRecords.length === 0) {
+        return {
+          totalLocalSynced: 0,
+          totalInSupabase: 0,
+          orphanedRecords: [],
+          repairedCount: 0,
+        };
+      }
+
+      // Get all timestamps from local synced records
+      const localTimestamps = localSyncedRecords.map(r => r.timestamp);
+
+      // Query Supabase for records matching these timestamps
+      const { data: remoteRecords, error: queryError } = await supabase
+        .from('horarios_registros_diarios')
+        .select('timestamp_local')
+        .in('timestamp_local', localTimestamps);
+
+      if (queryError) {
+        console.error('[SyncService] Supabase query error:', queryError);
+        throw new Error('Error al consultar Supabase');
+      }
+
+      // Create set of timestamps that exist in Supabase
+      const remoteTimestamps = new Set(
+        (remoteRecords || []).map((r: { timestamp_local: number }) => r.timestamp_local)
+      );
+
+      console.log(`[SyncService] Found ${remoteTimestamps.size} matching records in Supabase`);
+
+      // Find orphaned records (local synced but not in Supabase)
+      const orphanedRecords = localSyncedRecords
+        .filter(r => !remoteTimestamps.has(r.timestamp))
+        .map(r => ({
+          id: r.id,
+          timestamp: r.timestamp,
+          date: r.date,
+          time: r.time,
+          type: r.attendanceType,
+        }));
+
+      console.log(`[SyncService] Found ${orphanedRecords.length} orphaned records`);
+
+      let repairedCount = 0;
+
+      // Repair if requested
+      if (repair && orphanedRecords.length > 0) {
+        console.log('[SyncService] Repairing orphaned records...');
+        for (const orphan of orphanedRecords) {
+          try {
+            await attendanceRecordService.markAsPending(orphan.id);
+            repairedCount++;
+          } catch (error) {
+            console.error(`[SyncService] Failed to repair record ${orphan.id}:`, error);
+          }
+        }
+        console.log(`[SyncService] Repaired ${repairedCount} records`);
+      }
+
+      return {
+        totalLocalSynced: localSyncedRecords.length,
+        totalInSupabase: remoteTimestamps.size,
+        orphanedRecords,
+        repairedCount,
+      };
+    } catch (error) {
+      console.error('[SyncService] Verify sync integrity error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Pull records from Supabase that don't exist locally
+   * Used to sync history from other devices or after reinstall
+   *
+   * @param userCedula - User's cedula to fetch records for
+   * @returns Pull result
+   */
+  async pullFromSupabase(userCedula: string): Promise<PullResult> {
+    try {
+      console.log('[SyncService] Starting pull from Supabase for cedula:', userCedula);
+
+      // Check network
+      const hasNetwork = await checkNetworkStatus();
+      if (!hasNetwork) {
+        return {
+          success: false,
+          pulled: 0,
+          alreadyLocal: 0,
+          error: 'Sin conexión a Internet',
+        };
+      }
+
+      // Get all local timestamps to compare
+      const localTimestamps = await attendanceRecordService.getAllTimestamps();
+      const localTimestampSet = new Set(localTimestamps);
+
+      console.log(`[SyncService] Found ${localTimestamps.length} local records`);
+
+      // Fetch records from Supabase for this user
+      // Only get records from mobile source (fuente = 'mobile')
+      // Optimized: only last 90 days, minimal fields
+      type RemoteRecord = {
+        cedula: string;
+        empleado: string;
+        fecha: string;
+        tipo_marcaje: string;
+        timestamp_local: number;
+        hora_inicio_decimal: number | null;
+        hora_fin_decimal: number | null;
+      };
+
+      // Calculate 90 days ago
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const minDate = ninetyDaysAgo.toISOString().split('T')[0]; // yyyy-MM-dd
+
+      const { data: remoteRecords, error: queryError } = await supabase
+        .from('horarios_registros_diarios')
+        .select('cedula, empleado, fecha, tipo_marcaje, timestamp_local, hora_inicio_decimal, hora_fin_decimal')
+        .eq('cedula', userCedula)
+        .eq('fuente', 'mobile')
+        .gte('fecha', minDate)
+        .not('timestamp_local', 'is', null)
+        .order('timestamp_local', { ascending: false }) as { data: RemoteRecord[] | null; error: unknown };
+
+      if (queryError) {
+        console.error('[SyncService] Supabase query error:', queryError);
+        return {
+          success: false,
+          pulled: 0,
+          alreadyLocal: 0,
+          error: 'Error al consultar Supabase',
+        };
+      }
+
+      if (!remoteRecords || remoteRecords.length === 0) {
+        console.log('[SyncService] No remote records found');
+        return {
+          success: true,
+          pulled: 0,
+          alreadyLocal: localTimestamps.length,
+        };
+      }
+
+      console.log(`[SyncService] Found ${remoteRecords.length} remote records`);
+
+      // Filter records that don't exist locally
+      const newRecords = remoteRecords.filter(
+        (r) => r.timestamp_local && !localTimestampSet.has(r.timestamp_local)
+      );
+
+      console.log(`[SyncService] ${newRecords.length} records to pull`);
+
+      let pulled = 0;
+
+      // Create local records for each new remote record
+      for (const remote of newRecords) {
+        try {
+          const result = await attendanceRecordService.createFromRemote({
+            cedula: remote.cedula,
+            empleado: remote.empleado,
+            fecha: remote.fecha,
+            tipo_marcaje: remote.tipo_marcaje as 'clock_in' | 'clock_out',
+            timestamp_local: remote.timestamp_local,
+            hora_inicio_decimal: remote.hora_inicio_decimal,
+            hora_fin_decimal: remote.hora_fin_decimal,
+          });
+
+          if (result) {
+            pulled++;
+          }
+        } catch (error) {
+          console.error('[SyncService] Error creating local record:', error);
+        }
+      }
+
+      console.log(`[SyncService] Pull complete: ${pulled} records pulled`);
+
+      return {
+        success: true,
+        pulled,
+        alreadyLocal: remoteRecords.length - newRecords.length,
+      };
+    } catch (error) {
+      console.error('[SyncService] Pull from Supabase error:', error);
+      return {
+        success: false,
+        pulled: 0,
+        alreadyLocal: 0,
+        error: error instanceof Error ? error.message : 'Error desconocido',
       };
     }
   },
