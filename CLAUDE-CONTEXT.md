@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 5 de Enero 2026 (Sesión 2)
+**Última actualización:** 5 de Enero 2026 (Sesión 4)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -238,11 +238,40 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 ## Pendientes Conocidos
 
-(Sin pendientes actualmente)
+### Futuro: Web Admin Next.js
+
+- Reconstruir desde cero con Next.js + Supabase
+- Incluir: Dashboard, Fotos con mapa, Reportes, Gestión empleados
+- Usar la misma base de datos Supabase
 
 ---
 
 ## Historial de Sesiones
+
+### 5 de Enero 2026 (Sesión 4)
+- Configurado Web Admin local (puerto 8080) para visualización
+- Resuelto error "Acceso Restringido": faltaba `VITE_MASTER_EMAIL=admin@logiflow.com` en `.env`
+- Análisis de Web Admin v2: No tiene páginas de fotos ni coordenadas (solo dashboard, empleados, reportes, configuración)
+- **Decisión estratégica:** Priorizar app móvil, luego reconstruir Web Admin desde cero con Next.js
+
+### 5 de Enero 2026 (Sesión 3) - Continuación
+- Eliminadas columnas `centro_trabajo` y `horas_descanso` de `horarios_registros_diarios` (nunca usadas, 647 registros con valores NULL/0)
+- Actualizado RPC `get_kpis_dinamicos_activos` para usar `user_roles.role` como agrupación en vez de `centro_trabajo`
+  - Parámetro renombrado: `centro_filtro` → `rol_filtro`
+  - Campo de retorno: `centro_trabajo` → `rol`
+- Actualizados 10+ archivos en Web Admin para usar el nuevo campo `rol`:
+  - `useGlobalData.ts`, `useControlSemanal.ts`, `useEmpleadosDataIndependent.ts`
+  - `useReportesAusencias.ts`, `useConfiguracionJornadas.ts`, `useConfiguracionDescansos.ts`
+  - `ReportsNew.tsx`, `CorreccionManual.tsx`, `ChartsSection.tsx`
+- Los roles disponibles son: master, auxiliar, administrativo, operario_bodega, vendedor
+
+### 5 de Enero 2026 (Sesión 3)
+- Análisis flujo de datos marcaje entrada/salida → tabla `horarios_registros_diarios`
+- Eliminadas 11 columnas obsoletas de `horarios_registros_diarios`:
+  - ETL: `hora_inicio_original`, `hora_fin_original`, `horas_jornada_original`, `horas_extras_original`, `horas_descanso_original`, `periodo_original`, `tipo_dia`, `fecha_procesamiento`, `created_by`
+  - Empresa (single-tenant): `empresa`, `cif`
+- Ajustada Web Admin (`Empleados.tsx`) para usar `hora_inicio_decimal`/`hora_fin_decimal` con conversión a formato HH:MM
+- Actualizados tipos TypeScript en ambos proyectos
 
 ### 5 de Enero 2026 (Sesión 2)
 - Auditoría completa de tablas Supabase

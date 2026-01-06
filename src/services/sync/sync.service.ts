@@ -203,11 +203,6 @@ export const syncService = {
         cedula: record.userCedula,
         fecha: record.date,
 
-        // Company info (optional - TODO: get from user profile if available)
-        empresa: null,
-        cif: null,
-        centro_trabajo: null,
-
         // Time data
         hora_inicio_decimal:
           record.attendanceType === 'clock_in' ? record.timeDecimal : null,
@@ -215,7 +210,6 @@ export const syncService = {
           record.attendanceType === 'clock_out' ? record.timeDecimal : null,
         horas_trabajadas: horasTrabajadas,
         horas_extras: horasExtras,
-        horas_descanso: 0, // TODO: Implement break time calculation if needed
         jornada_completa: jornadaCompleta,
         tiene_extras: tieneExtras,
 
@@ -226,7 +220,7 @@ export const syncService = {
         longitud: record.longitude || null,
         tipo_marcaje: record.attendanceType,
         timestamp_local: record.timestamp,
-        fuente: 'mobile', // CRITICAL: Mark as mobile source
+        fuente: 'mobile',
 
         // Processing metadata
         timestamp_procesamiento: new Date().toISOString(),
