@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  Image,
   ActivityIndicator,
   TouchableOpacity,
   Linking,
@@ -128,32 +127,6 @@ const DetalleNovedadScreen: React.FC = () => {
         </View>
         <Text style={styles.motivoText}>{novedad.motivo}</Text>
       </View>
-
-      {/* Descripción adicional */}
-      {novedad.descripcion && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="text-long" size={20} color="#059669" />
-            <Text style={styles.sectionTitle}>Descripción adicional</Text>
-          </View>
-          <Text style={styles.descripcionText}>{novedad.descripcion}</Text>
-        </View>
-      )}
-
-      {/* Foto de evidencia */}
-      {novedad.foto_url && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="camera" size={20} color="#059669" />
-            <Text style={styles.sectionTitle}>Foto de evidencia</Text>
-          </View>
-          <Image
-            source={{ uri: novedad.foto_url }}
-            style={styles.foto}
-            resizeMode="cover"
-          />
-        </View>
-      )}
 
       {/* Ubicación del reporte */}
       {novedad.latitud && novedad.longitud && (
@@ -304,17 +277,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 22,
-  },
-  descripcionText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 22,
-    fontStyle: 'italic',
-  },
-  foto: {
-    width: '100%',
-    height: 250,
-    borderRadius: 12,
   },
   ubicacionContainer: {
     backgroundColor: '#F9FAFB',

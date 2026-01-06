@@ -12,8 +12,6 @@ export interface NovedadData {
   fecha: string; // YYYY-MM-DD
   tipo_novedad: TipoNovedad;
   motivo: string;
-  descripcion?: string;
-  foto_url?: string;
   latitud?: number;
   longitud?: number;
 }
@@ -35,8 +33,6 @@ export interface Novedad {
   fecha: string;
   tipo_novedad: TipoNovedad;
   motivo: string;
-  descripcion: string | null;
-  foto_url: string | null;
   latitud: number | null;
   longitud: number | null;
   estado: EstadoNovedad;
@@ -82,43 +78,6 @@ class NovedadesService {
       };
     } catch (error) {
       console.error('Error obteniendo ubicación:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Sube una foto de evidencia a Supabase Storage
-   * Uses base64 encoding for React Native compatibility
-   */
-  async subirFotoEvidencia(userId: string, fotoUri: string): Promise<string | null> {
-    try {
-      const timestamp = Date.now();
-      const filename = `novedades/${userId}/${timestamp}_evidencia.jpg`;
-
-      // React Native: Read file as base64 and convert to ArrayBuffer
-      const response = await fetch(fotoUri);
-      const arrayBuffer = await response.arrayBuffer();
-
-      const { data, error } = await supabase.storage
-        .from('attendance_photos')
-        .upload(filename, arrayBuffer, {
-          contentType: 'image/jpeg',
-          upsert: false
-        });
-
-      if (error) {
-        console.error('Error subiendo foto:', error);
-        return null;
-      }
-
-      // Obtener URL pública
-      const { data: { publicUrl } } = supabase.storage
-        .from('attendance_photos')
-        .getPublicUrl(filename);
-
-      return publicUrl;
-    } catch (error) {
-      console.error('Error en subirFotoEvidencia:', error);
       return null;
     }
   }

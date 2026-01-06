@@ -1,6 +1,8 @@
-# Control Horario Mobile App
+# LogiFlow Marcaje - Mobile App
 
 Aplicación móvil React Native para registro de asistencia de empleados con funcionalidad offline-first.
+
+> **Para Claude:** Ver [CLAUDE-CONTEXT.md](./CLAUDE-CONTEXT.md) para contexto rápido del proyecto.
 
 ## 🎯 Objetivo
 

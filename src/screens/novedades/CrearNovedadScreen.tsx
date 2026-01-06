@@ -13,8 +13,6 @@ const CrearNovedadScreen: React.FC = () => {
     fecha: string;
     tipo_novedad: TipoNovedad;
     motivo: string;
-    descripcion?: string;
-    foto_uri?: string;
   }) => {
     try {
       const success = await crearNovedad(data);

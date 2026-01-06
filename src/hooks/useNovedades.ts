@@ -58,8 +58,6 @@ export const useNovedades = () => {
     fecha: string;
     tipo_novedad: TipoNovedad;
     motivo: string;
-    descripcion?: string;
-    foto_uri?: string;
   }): Promise<boolean> => {
     try {
       setLoading(true);
@@ -68,22 +66,11 @@ export const useNovedades = () => {
       // Obtener ubicación
       const ubicacion = await novedadesService.obtenerUbicacionActual();
 
-      // Subir foto si existe
-      let foto_url: string | undefined;
-      if (data.foto_uri) {
-        const { data: { user } } = await novedadesService.obtenerUsuarioActual();
-        if (user) {
-          foto_url = await novedadesService.subirFotoEvidencia(user.id, data.foto_uri) || undefined;
-        }
-      }
-
       // Crear novedad
       const novedad = await novedadesService.crearNovedad({
         fecha: data.fecha,
         tipo_novedad: data.tipo_novedad,
         motivo: data.motivo,
-        descripcion: data.descripcion,
-        foto_url,
         latitud: ubicacion?.latitud,
         longitud: ubicacion?.longitud
       });

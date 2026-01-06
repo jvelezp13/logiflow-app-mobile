@@ -58,12 +58,6 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
         {truncateText(novedad.motivo)}
       </Text>
 
-      {novedad.descripcion && (
-        <Text style={styles.descripcion} numberOfLines={1}>
-          {truncateText(novedad.descripcion, 60)}
-        </Text>
-      )}
-
       <View style={styles.footer}>
         <View style={styles.footerItem}>
           <MaterialCommunityIcons name="clock-outline" size={14} color="#6B7280" />
@@ -71,13 +65,6 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
             {format(parseISO(novedad.created_at), "d MMM, HH:mm", { locale: es })}
           </Text>
         </View>
-
-        {novedad.foto_url && (
-          <View style={styles.footerItem}>
-            <MaterialCommunityIcons name="camera" size={14} color="#6B7280" />
-            <Text style={styles.footerText}>Con foto</Text>
-          </View>
-        )}
 
         {novedad.latitud && novedad.longitud && (
           <View style={styles.footerItem}>
@@ -141,12 +128,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 20,
-    marginBottom: 8,
-  },
-  descripcion: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontStyle: 'italic',
     marginBottom: 8,
   },
   footer: {

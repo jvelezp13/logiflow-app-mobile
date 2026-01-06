@@ -6,12 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Image,
   Alert,
   Platform
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 import TipoNovedadPicker from './TipoNovedadPicker';
@@ -21,8 +19,6 @@ interface NovedadFormData {
   fecha: Date;
   tipo_novedad: TipoNovedad | null;
   motivo: string;
-  descripcion: string;
-  foto_uri: string | null;
 }
 
 interface NovedadFormProps {
@@ -30,8 +26,6 @@ interface NovedadFormProps {
     fecha: string;
     tipo_novedad: TipoNovedad;
     motivo: string;
-    descripcion?: string;
-    foto_uri?: string;
   }) => Promise<void>;
   loading?: boolean;
 }
@@ -41,8 +35,6 @@ const NovedadForm: React.FC<NovedadFormProps> = ({ onSubmit, loading = false }) 
     fecha: new Date(),
     tipo_novedad: null,
     motivo: '',
-    descripcion: '',
-    foto_uri: null,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -87,85 +79,10 @@ const NovedadForm: React.FC<NovedadFormProps> = ({ onSubmit, loading = false }) 
         fecha: format(formData.fecha, 'yyyy-MM-dd'), // Usa timezone local, no UTC
         tipo_novedad: formData.tipo_novedad!,
         motivo: formData.motivo.trim(),
-        descripcion: formData.descripcion.trim() || undefined,
-        foto_uri: formData.foto_uri || undefined,
       });
     } catch (error) {
       console.error('Error en submit:', error);
     }
-  };
-
-  const pickImage = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permiso requerido',
-          'Necesitamos acceso a tu galería para seleccionar una foto'
-        );
-        return;
-      }
-
-      const result = await ImagePicker.launchImagePickerAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        exif: false,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setFormData(prev => ({ ...prev, foto_uri: result.assets[0].uri }));
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'No se pudo seleccionar la imagen');
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permiso requerido',
-          'Necesitamos acceso a tu cámara para tomar una foto'
-        );
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        exif: false,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setFormData(prev => ({ ...prev, foto_uri: result.assets[0].uri }));
-      }
-    } catch (error) {
-      console.error('Error taking photo:', error);
-      Alert.alert('Error', 'No se pudo tomar la foto');
-    }
-  };
-
-  const showImageOptions = () => {
-    Alert.alert(
-      'Agregar foto de evidencia',
-      'Selecciona una opción',
-      [
-        { text: 'Tomar foto', onPress: takePhoto },
-        { text: 'Seleccionar de galería', onPress: pickImage },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
-  };
-
-  const removePhoto = () => {
-    setFormData(prev => ({ ...prev, foto_uri: null }));
   };
 
   return (
@@ -254,52 +171,6 @@ const NovedadForm: React.FC<NovedadFormProps> = ({ onSubmit, loading = false }) 
             {charCount}/500
           </Text>
         </View>
-      </View>
-
-      {/* Descripción adicional */}
-      <View style={styles.field}>
-        <Text style={styles.label}>Descripción adicional (opcional)</Text>
-        <TextInput
-          style={styles.textArea}
-          value={formData.descripcion}
-          onChangeText={(text) => setFormData(prev => ({ ...prev, descripcion: text }))}
-          placeholder="Agrega detalles adicionales si es necesario"
-          placeholderTextColor="#9CA3AF"
-          multiline
-          numberOfLines={3}
-          maxLength={500}
-          editable={!loading}
-          textAlignVertical="top"
-        />
-        <Text style={styles.helperText}>Opcional, pero puede ayudar en la revisión</Text>
-      </View>
-
-      {/* Foto de evidencia */}
-      <View style={styles.field}>
-        <Text style={styles.label}>Foto de evidencia (opcional)</Text>
-
-        {formData.foto_uri ? (
-          <View style={styles.photoContainer}>
-            <Image source={{ uri: formData.foto_uri }} style={styles.photoPreview} />
-            <TouchableOpacity
-              style={styles.removePhotoButton}
-              onPress={removePhoto}
-              disabled={loading}
-            >
-              <MaterialCommunityIcons name="close-circle" size={28} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.photoButton}
-            onPress={showImageOptions}
-            disabled={loading}
-          >
-            <MaterialCommunityIcons name="camera-plus" size={32} color="#059669" />
-            <Text style={styles.photoButtonText}>Agregar foto</Text>
-            <Text style={styles.photoButtonSubtext}>Toca para tomar o seleccionar</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Información de geolocalización */}
@@ -399,42 +270,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#EF4444',
     marginTop: 4,
-  },
-  photoButton: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 2,
-    borderColor: '#059669',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
-  },
-  photoButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#059669',
-  },
-  photoButtonSubtext: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  photoContainer: {
-    position: 'relative',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  photoPreview: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
-  removePhotoButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
   },
   infoBox: {
     flexDirection: 'row',
