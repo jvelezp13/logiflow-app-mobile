@@ -154,10 +154,13 @@ logiflow-app-mobile/
 
 ## Proyectos Relacionados
 
-| Proyecto | Ruta | Descripción |
-|----------|------|-------------|
-| **App Móvil** | `~/CascadeProjects/logiflow-app-mobile` | Este proyecto |
-| **Web Admin v2** | `~/CascadeProjects/logiflow-control-horarios-v2` | Dashboard administrativo |
+| Proyecto | Ruta | Estado |
+|----------|------|--------|
+| **App Móvil** | `~/CascadeProjects/logiflow-app-mobile` | ✅ Este proyecto |
+| **Web Admin Next.js** | `~/CascadeProjects/logiflow-admin-nextjs` | ✅ Activo (reemplazo) |
+| **Web Admin v2** | `~/CascadeProjects/logiflow-control-horarios-v2` | ❄️ Congelado (no mantener) |
+
+**IMPORTANTE:** App Móvil y Web Admin Next.js comparten la misma base de datos Supabase.
 
 ### Protocolo de Modificación de Base de Datos
 
@@ -169,8 +172,8 @@ logiflow-app-mobile/
 2. Buscar en App Móvil (este proyecto)
    → grep del nombre en src/
           ↓
-3. Buscar en Web Admin v2
-   → grep en ~/CascadeProjects/logiflow-control-horarios-v2/src
+3. Buscar en Web Admin Next.js
+   → grep en ~/CascadeProjects/logiflow-admin-nextjs/src
           ↓
 4. Analizar impacto en cada proyecto
    → ¿Qué lee? ¿Qué escribe?
