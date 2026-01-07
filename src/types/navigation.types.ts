@@ -51,6 +51,12 @@ export type NovedadesStackParamList = {
   NovedadesList: undefined;
   CrearNovedad: undefined;
   DetalleNovedad: { novedadId: string };
+  SolicitarAjuste: {
+    marcajeId: number;
+    fecha: string;
+    tipo: 'clock_in' | 'clock_out';
+    horaActual: string;
+  };
 };
 
 /**

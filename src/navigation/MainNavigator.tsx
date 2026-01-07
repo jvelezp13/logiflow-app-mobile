@@ -3,24 +3,24 @@
  *
  * Bottom tab navigator for main app screens.
  * Handles safe area insets for devices with notches.
+ *
+ * Note: Novedades navigator is hidden from tab bar but accessible
+ * programmatically from History screen for viewing adjustment details.
  */
 
 import React from 'react';
 import { Text, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { MainTabParamList } from '@/types/navigation.types';
 import { HomeScreen, HistoryScreen, SettingsScreen } from '@screens/main';
 import { NovedadesNavigator } from './NovedadesNavigator';
-import useNovedades from '@/hooks/useNovedades';
 import { COLORS, LAYOUT } from '@constants/theme';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { estadisticas } = useNovedades();
 
   // Calculate tab bar height with safe area
   const tabBarHeight = LAYOUT.bottomTabHeight + insets.bottom;
@@ -70,31 +70,6 @@ export const MainNavigator: React.FC = () => {
         }}
       />
       <Tab.Screen
-        name="Novedades"
-        component={NovedadesNavigator}
-        options={{
-          headerShown: false,
-          tabBarLabel: 'Novedades',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons
-              name="file-document-alert-outline"
-              size={size}
-              color={color}
-            />
-          ),
-          tabBarBadge: estadisticas.pendientes > 0 ? estadisticas.pendientes : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#F59E0B',
-            color: '#FFFFFF',
-            fontSize: 11,
-            fontWeight: '700',
-            minWidth: 18,
-            height: 18,
-            borderRadius: 9,
-          },
-        }}
-      />
-      <Tab.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
@@ -103,6 +78,16 @@ export const MainNavigator: React.FC = () => {
           tabBarIcon: ({ color, size }) => (
             <Text style={{ fontSize: size, color }}>⚙️</Text>
           ),
+        }}
+      />
+      {/* Hidden navigator - accessible from History for adjustment details */}
+      <Tab.Screen
+        name="Novedades"
+        component={NovedadesNavigator}
+        options={{
+          headerShown: false,
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
         }}
       />
     </Tab.Navigator>

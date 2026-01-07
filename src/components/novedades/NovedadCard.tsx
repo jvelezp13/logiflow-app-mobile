@@ -17,16 +17,9 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
     return text.substring(0, maxLength) + '...';
   };
 
-  const getTipoIcon = (tipo: string): keyof typeof MaterialCommunityIcons.glyphMap => {
-    const icons: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
-      entrada_tardia: 'clock-alert',
-      salida_temprana: 'clock-fast',
-      ausencia: 'account-cancel',
-      incapacidad: 'hospital-box',
-      permiso: 'file-check',
-      otro: 'file-question'
-    };
-    return icons[tipo] || 'file-document';
+  const getTipoIcon = (): keyof typeof MaterialCommunityIcons.glyphMap => {
+    // Now only ajuste_marcaje is supported
+    return 'clock-edit-outline';
   };
 
   return (
@@ -38,7 +31,7 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <MaterialCommunityIcons
-            name={getTipoIcon(novedad.tipo_novedad)}
+            name={getTipoIcon()}
             size={24}
             color="#059669"
           />
@@ -66,12 +59,7 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
           </Text>
         </View>
 
-        {novedad.latitud && novedad.longitud && (
-          <View style={styles.footerItem}>
-            <MaterialCommunityIcons name="map-marker" size={14} color="#6B7280" />
-            <Text style={styles.footerText}>Ubicación</Text>
-          </View>
-        )}
+        {/* Location removed - no longer tracked */}
       </View>
 
       {novedad.comentarios_revision && (

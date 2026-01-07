@@ -16,14 +16,14 @@ export interface NovedadData {
   longitud?: number;
 }
 
-export type TipoNovedad =
-  | 'entrada_tardia'
-  | 'salida_temprana'
-  | 'ausencia'
-  | 'permiso'
-  | 'otro';
+export type TipoNovedad = 'ajuste_marcaje';
 
 export type EstadoNovedad = 'pendiente' | 'aprobada' | 'rechazada';
+
+export interface NovedadInfo {
+  id: string;
+  estado: EstadoNovedad;
+}
 
 export interface Novedad {
   id: string;
@@ -33,8 +33,9 @@ export interface Novedad {
   fecha: string;
   tipo_novedad: TipoNovedad;
   motivo: string;
-  latitud: number | null;
-  longitud: number | null;
+  marcaje_id: number | null;
+  hora_nueva: string | null;
+  hora_real: string | null;
   estado: EstadoNovedad;
   revisado_por: string | null;
   fecha_revision: string | null;
@@ -43,12 +44,19 @@ export interface Novedad {
   updated_at: string;
 }
 
+export interface AjusteMarcajeData {
+  /** ID de Supabase del marcaje (si se conoce) */
+  marcaje_id?: number;
+  /** Timestamp del marcaje local (epoch ms) - usado para buscar en Supabase si no hay marcaje_id */
+  timestamp_local?: number;
+  fecha: string;
+  hora_nueva: string;
+  hora_real: string;
+  motivo: string;
+}
+
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
-  entrada_tardia: 'Ajuste de entrada',
-  salida_temprana: 'Ajuste de salida',
-  ausencia: 'Ausencia',
-  permiso: 'Permiso',
-  otro: 'Otro'
+  ajuste_marcaje: 'Ajuste de marcaje',
 };
 
 // =====================================================
@@ -83,7 +91,83 @@ class NovedadesService {
   }
 
   /**
-   * Crea una nueva novedad
+   * Crea una solicitud de ajuste de marcaje
+   * Si no se proporciona marcaje_id, busca el marcaje por timestamp_local
+   */
+  async crearAjusteMarcaje(data: AjusteMarcajeData): Promise<Novedad | null> {
+    try {
+      // Obtener usuario actual
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error('Usuario no autenticado');
+      }
+
+      // Obtener datos del perfil
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('cedula, nombre')
+        .eq('user_id', user.id)
+        .single() as { data: { cedula: string; nombre: string } | null; error: unknown };
+
+      if (profileError || !profile) {
+        throw new Error('No se pudo obtener información del perfil');
+      }
+
+      // Determinar marcaje_id
+      let marcajeId = data.marcaje_id;
+
+      // Si no hay marcaje_id pero hay timestamp, buscar en Supabase
+      if (!marcajeId && data.timestamp_local) {
+        const { data: marcaje, error: marcajeError } = await supabase
+          .from('horarios_registros_diarios')
+          .select('id')
+          .eq('cedula', profile.cedula)
+          .eq('timestamp_local', data.timestamp_local)
+          .single() as { data: { id: number } | null; error: unknown };
+
+        if (marcajeError || !marcaje) {
+          console.warn('No se encontró el marcaje por timestamp, continuando sin marcaje_id');
+        } else {
+          marcajeId = marcaje.id;
+        }
+      }
+
+      // Preparar datos para insertar
+      const novedadData = {
+        user_id: user.id,
+        cedula: profile.cedula,
+        empleado: profile.nombre,
+        fecha: data.fecha,
+        tipo_novedad: 'ajuste_marcaje' as TipoNovedad,
+        motivo: data.motivo,
+        marcaje_id: marcajeId || null,
+        hora_nueva: data.hora_nueva,
+        hora_real: data.hora_real,
+      };
+
+      // Insertar en la base de datos
+      const { data: novedad, error } = await supabase
+        .from('horarios_novedades')
+        .insert(novedadData as never)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creando ajuste de marcaje:', error);
+        throw error;
+      }
+
+      return novedad as Novedad;
+    } catch (error) {
+      console.error('Error en crearAjusteMarcaje:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Crea una nueva novedad (legacy - mantener por compatibilidad)
+   * @deprecated Use crearAjusteMarcaje instead
    */
   async crearNovedad(data: Omit<NovedadData, 'user_id' | 'cedula' | 'empleado'>): Promise<Novedad | null> {
     try {
@@ -261,6 +345,78 @@ class NovedadesService {
    */
   async obtenerUsuarioActual() {
     return await supabase.auth.getUser();
+  }
+
+  /**
+   * Info de novedad asociada a un marcaje
+   */
+
+
+  /**
+   * Obtiene mapa de info de novedades por timestamp_local del marcaje
+   * Útil para mostrar indicadores en el historial de marcajes
+   * Hace join con horarios_registros_diarios para obtener el timestamp_local
+   */
+  async obtenerNovedadesPorTimestamp(): Promise<Map<number, NovedadInfo>> {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        return new Map();
+      }
+
+      // Join novedades con registros para obtener timestamp_local
+      const { data, error } = await supabase
+        .from('horarios_novedades')
+        .select(`
+          id,
+          estado,
+          marcaje_id,
+          horarios_registros_diarios!inner(timestamp_local)
+        `)
+        .eq('user_id', user.id)
+        .not('marcaje_id', 'is', null) as {
+          data: Array<{
+            id: string;
+            estado: string;
+            marcaje_id: number;
+            horarios_registros_diarios: { timestamp_local: number };
+          }> | null;
+          error: unknown;
+        };
+
+      if (error) {
+        console.error('Error obteniendo novedades por timestamp:', error);
+        return new Map();
+      }
+
+      const map = new Map<number, NovedadInfo>();
+      for (const item of data || []) {
+        if (item.horarios_registros_diarios?.timestamp_local) {
+          map.set(item.horarios_registros_diarios.timestamp_local, {
+            id: item.id,
+            estado: item.estado as EstadoNovedad,
+          });
+        }
+      }
+
+      return map;
+    } catch (error) {
+      console.error('Error en obtenerNovedadesPorTimestamp:', error);
+      return new Map();
+    }
+  }
+
+  /**
+   * @deprecated Use obtenerNovedadesPorTimestamp instead
+   */
+  async obtenerEstadosPorTimestamp(): Promise<Map<number, EstadoNovedad>> {
+    const novedadesMap = await this.obtenerNovedadesPorTimestamp();
+    const estadosMap = new Map<number, EstadoNovedad>();
+    novedadesMap.forEach((info, timestamp) => {
+      estadosMap.set(timestamp, info.estado);
+    });
+    return estadosMap;
   }
 }
 

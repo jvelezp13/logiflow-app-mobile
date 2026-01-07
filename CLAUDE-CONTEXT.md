@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 5 de Enero 2026 (Sesión 7)
+**Última actualización:** 7 de Enero 2026 (Sesión 10)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -147,11 +147,8 @@ logiflow-app-mobile/
 
 | Tabla | Propósito |
 |-------|-----------|
-| `horarios_alertas_gestion` | Alertas para admin |
-| `horarios_asignaciones_diarias` | Asignación de horarios |
-| `horarios_configuracion_descansos` | Config de descansos |
-| `horarios_cierres_automaticos_log` | Log de cierres automáticos |
-| `horarios_sync_control` | Control de sincronización ETL |
+| `horarios_alertas_gestion` | Alertas automáticas para admin (ausencias, excesos, etc.) |
+| `configuracion_jornadas_rol` | **NUEVA** - Config de límites por rol + excepciones por cédula |
 
 ---
 
@@ -238,6 +235,17 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 6. **Pull de historial optimizado:** Al abrir Historial, se hace pull de Supabase (una sola vez por sesión) para traer registros de otros dispositivos. Limitado a últimos 90 días y campos mínimos para eficiencia en equipos antiguos.
 
+7. **Sin marcaje de pausas:** Los empleados NO marcan pausas/almuerzo. El descanso se pre-configura por rol (ej: vendedor=60min) y se resta automáticamente al calcular horas trabajadas. Esto evita olvidos y simplifica el flujo.
+
+8. **Configuración por rol + excepciones:** Los límites de jornada (max horas, horario permitido, descanso) se configuran por rol. Si un empleado específico necesita algo diferente, se crea excepción por cédula.
+
+9. **Ajuste de marcaje simplificado:** Las "novedades" ahora son solo solicitudes de ajuste de marcaje. El empleado selecciona un marcaje desde el Historial, indica la hora correcta y el motivo. El admin aprueba/rechaza desde Web Admin.
+
+10. **Efecto de aprobación de ajuste (PENDIENTE - Web Admin):** Cuando el admin aprueba una novedad, actualmente solo cambia `estado` a 'aprobada'. El marcaje original NO se modifica automáticamente. Al construir el nuevo Web Admin, elegir una de estas opciones:
+    - **Opción A) Solo informativo:** La novedad queda como registro. Los reportes consultan `hora_nueva` de novedades aprobadas.
+    - **Opción B) Actualizar marcaje:** Al aprobar, se actualiza `hora` en `horarios_registros_diarios`. El dato original se pierde.
+    - **Opción C) Campo separado (RECOMENDADA):** Agregar columna `hora_ajustada` al registro. Si existe, reportes usan esa. Preserva el dato original para auditoría. Los reportes usarían `COALESCE(hora_ajustada, hora)`.
+
 ---
 
 ## Pendientes Conocidos
@@ -260,7 +268,135 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 ---
 
+## Roadmap: Sistema de Control de Jornadas
+
+### Fase 1: Ajuste de Marcaje (Sesión 8-10 - COMPLETADA)
+- [x] Diseño de arquitectura
+- [x] Limpieza de BD (eliminadas 4 tablas + 1 función obsoletas)
+- [x] Crear tabla `configuracion_jornadas_rol`
+- [x] Simplificar `horarios_novedades` a solo ajustes
+- [x] UI: Botón "Solicitar ajuste" en cada marcaje del Historial
+- [x] UI: Formulario simple (hora nueva + motivo)
+- [x] Navegación: HistoryScreen → Novedades tab → SolicitarAjusteScreen
+- [x] Service: Lookup de marcaje_id por timestamp_local
+- [x] Indicadores visuales en Historial (pendiente/aprobado/rechazado)
+- [x] Detección de novedades existentes → navegar a detalle en vez de crear
+- [x] Tab Novedades oculto (acceso solo desde Historial)
+
+### Fase 2: Tracking de Ubicación (Futuro)
+- Nueva tabla `ubicaciones_jornada` para tracking periódico
+- Servicio background que envía ubicación cada 30-60 min
+- Solo activo entre entrada y salida
+- Trazabilidad de que el empleado estuvo trabajando
+
+### Fase 3: Límites Automáticos (Futuro - requiere Web Admin)
+- Alertas cuando jornada > max_horas_dia configurado
+- Bloqueo/alerta de marcajes en horario nocturno (antes 6am, después 7pm)
+- Requiere autorización especial para extender jornada
+
+### Estructura de `configuracion_jornadas_rol`
+```sql
+-- Config por ROL (base) o por CÉDULA (excepción)
+CREATE TABLE configuracion_jornadas_rol (
+  id UUID PRIMARY KEY,
+  rol app_role,                    -- NULL si es excepción por cédula
+  cedula VARCHAR,                  -- NULL si es config por rol
+  max_horas_dia DECIMAL(4,2) DEFAULT 10.0,
+  hora_inicio_permitida TIME DEFAULT '06:00',
+  hora_fin_permitida TIME DEFAULT '19:00',
+  minutos_descanso_diario INTEGER DEFAULT 60,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT chk_rol_o_cedula CHECK (
+    (rol IS NOT NULL AND cedula IS NULL) OR
+    (rol IS NULL AND cedula IS NOT NULL)
+  )
+);
+
+-- Prioridad: 1) cédula específica, 2) rol, 3) defaults
+```
+
+---
+
 ## Historial de Sesiones
+
+### 7 de Enero 2026 (Sesión 10)
+- **Fix DateTimePicker en Android:**
+  - Cambiado de API declarativa a imperativa (`DateTimePickerAndroid.open()`)
+  - iOS mantiene spinner, Android usa dialog nativo
+- **Indicadores visuales en Historial:**
+  - Nuevo método `obtenerNovedadesPorTimestamp()` en novedadesService (join con registros)
+  - Hook `useAttendanceRecords` ahora retorna `novedadesInfo` (id + estado)
+  - AttendanceCard muestra badges: Pendiente (amarillo), Ajustado (verde), Rechazado (rojo)
+  - Removido icono de lápiz, agregado chevron-right
+  - Removido filtro "Todos" (solo Hoy/Semana/Mes)
+- **Navegación inteligente desde Historial:**
+  - Si no hay novedad → navega a SolicitarAjusteScreen (crear solicitud)
+  - Si ya existe novedad → navega a DetalleNovedadScreen (ver estado/comentarios)
+- **Tab Novedades oculto:**
+  - Removido del tab bar usando `tabBarButton: () => null` + `tabBarItemStyle: { display: 'none' }`
+  - Screen movido al final del Tab.Navigator para evitar espacio en blanco
+  - Navigator sigue existiendo para navegación programática desde Historial
+  - Tab bar ahora muestra solo: Inicio, Historial, Ajustes (3 tabs)
+- **Pull-to-refresh en Historial:**
+  - Agregado `RefreshControl` al SectionList
+  - Nueva función `onRefresh` en hook para recargar novedades sin reiniciar app
+  - Útil para ver novedades recién creadas
+- **DetalleNovedadScreen mejorado:**
+  - Nueva sección "Solicitud de Ajuste" que muestra hora registrada → hora solicitada
+  - Permite verificar qué hora se pidió antes de que admin apruebe/rechace
+- **Ajustes estéticos finales:**
+  - Header azul más alto (60 → 90 en theme.ts) para evitar corte por notch
+  - Botones sync reordenados: Verificar primero, Forzar después (lógica correcta)
+- **Fase 1 del Roadmap 100% completada**
+
+### 7 de Enero 2026 (Sesión 9)
+- **Completada UI de ajuste de marcaje:**
+  - AttendanceCard ahora es tocable con icono de lápiz (pencil)
+  - HistoryScreen navega a Novedades tab → SolicitarAjusteScreen
+  - Navegación entre tabs con parámetros: `navigation.navigate('Novedades', { screen: 'SolicitarAjuste', params: {...} })`
+- **Agregado SolicitarAjusteScreen al NovedadesNavigator:**
+  - Screen con header "Solicitar Ajuste"
+  - Formulario: info del marcaje, selector de hora (DateTimePicker), campo motivo
+  - Validación: motivo mínimo 10 caracteres
+- **Actualizado novedadesService para lookup por timestamp:**
+  - `crearAjusteMarcaje()` busca `marcaje_id` en Supabase usando `timestamp_local`
+  - Necesario porque WatermelonDB no almacena IDs de Supabase
+- **Limpieza de código obsoleto:**
+  - TipoNovedadPicker simplificado a solo 'ajuste_marcaje'
+  - NovedadCard: eliminadas referencias a latitud/longitud
+  - DetalleNovedadScreen: eliminada sección de ubicación
+- **Fix imports y tipos:**
+  - Button: `@components/common` → `@components/ui/Button`
+  - Navigation typing: `useNavigation<any>()` con eslint-disable para navegación entre tabs
+- **Fase 1 del Roadmap completada** - Sistema de ajuste de marcaje funcional
+
+### 7 de Enero 2026 (Sesión 8)
+- **Rediseño del sistema de novedades → ajustes de marcaje:**
+  - Análisis completo de tablas existentes y flujo actual
+  - Decisión: Simplificar "novedades" a solo "solicitudes de ajuste de marcaje"
+  - Eliminar tipos: ausencia, permiso, jornada_extendida, otro (no se usan)
+  - Nuevo flujo: Historial → tocar marcaje → solicitar ajuste → hora nueva + motivo
+- **Limpieza de BD ejecutada:**
+  - ✅ Eliminada: `horarios_cierres_automaticos_log` (5,983 registros)
+  - ✅ Eliminada: `horarios_sync_control` (vacía)
+  - ✅ Eliminada: `horarios_asignaciones_diarias` (70 registros)
+  - ✅ Eliminada: `horarios_configuracion_descansos` (vacía)
+  - ✅ Eliminada función: `cerrar_jornadas_extendidas_automatico`
+- **Simplificación de `horarios_novedades`:**
+  - ✅ Eliminadas columnas: `latitud`, `longitud`, `hora_planificada`
+  - ✅ Unificado tipo_novedad a solo `ajuste_marcaje`
+  - ✅ Eliminado 1 registro tipo `ausencia` (quedan 8 registros)
+- **Nueva tabla `configuracion_jornadas_rol` creada:**
+  - Configuración de límites por ROL (base) + excepciones por CÉDULA
+  - Campos: max_horas_dia, hora_inicio/fin_permitida, minutos_descanso_diario
+  - Constraints: solo una config activa por rol/cédula
+- **Decisiones de diseño:**
+  - Sin marcaje de pausas: descanso pre-configurado por rol, se resta automático
+  - Límite default: 10 horas/día, horario 06:00-19:00
+  - Prioridad config: 1) cédula específica, 2) rol, 3) defaults globales
+- **Roadmap documentado:** 3 fases (ajustes, tracking ubicación, límites automáticos)
 
 ### 5 de Enero 2026 (Sesión 7)
 - **Rediseño completo de Historial:**

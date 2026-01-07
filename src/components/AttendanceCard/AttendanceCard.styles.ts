@@ -8,6 +8,7 @@ import {
   FONT_SIZES,
   FONT_WEIGHTS,
   SPACING,
+  BORDER_RADIUS,
 } from '@constants/theme';
 
 export const styles = StyleSheet.create({
@@ -38,5 +39,40 @@ export const styles = StyleSheet.create({
   syncIcon: {
     fontSize: FONT_SIZES.md,
     marginLeft: SPACING.sm,
+  },
+  // Adjustment status badges
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    marginLeft: SPACING.sm,
+  },
+  statusBadgePending: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusBadgeApproved: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusBadgeRejected: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    marginLeft: 4,
+  },
+  statusTextPending: {
+    color: '#92400E',
+  },
+  statusTextApproved: {
+    color: '#065F46',
+  },
+  statusTextRejected: {
+    color: '#991B1B',
+  },
+  chevron: {
+    marginLeft: SPACING.xs,
   },
 });

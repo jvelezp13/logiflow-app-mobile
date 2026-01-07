@@ -152,7 +152,7 @@ export const SHADOWS = {
 export const LAYOUT = {
   screenPadding: SPACING.md,
   maxWidth: 600, // For tablets (fixed)
-  headerHeight: Math.max(60, moderateScale(60, 0.3)),
+  headerHeight: Math.max(90, moderateScale(90, 0.3)),
   bottomTabHeight: Math.max(getMinTouchableSize(), moderateScale(56, 0.3)),
   minTouchableSize: getMinTouchableSize(), // Platform-specific minimum
   // Screen dimensions (useful for calculations)

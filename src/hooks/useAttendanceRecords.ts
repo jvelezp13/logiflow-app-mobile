@@ -5,17 +5,23 @@
  * Automatically pulls records from Supabase on first load.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '@services/storage';
 import type { AttendanceRecord } from '@services/storage';
 import { syncService } from '@services/sync/sync.service';
+import novedadesService, { type NovedadInfo } from '@services/novedadesService';
 import { format } from 'date-fns';
 
 /**
  * Date filter options
  */
-export type DateFilter = 'today' | 'week' | 'month' | 'all';
+export type DateFilter = 'today' | 'week' | 'month';
+
+/**
+ * Map of timestamp -> novedad info (id + estado)
+ */
+export type NovedadInfoMap = Map<number, NovedadInfo>;
 
 /**
  * Hook to get attendance records with reactive updates
@@ -28,14 +34,51 @@ export type DateFilter = 'today' | 'week' | 'month' | 'all';
  */
 export const useAttendanceRecords = (
   userId: string | undefined,
-  dateFilter: DateFilter = 'all',
+  dateFilter: DateFilter = 'month',
   userCedula?: string | null
 ) => {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPulling, setIsPulling] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullResult, setPullResult] = useState<{ pulled: number } | null>(null);
+  const [novedadesInfo, setNovedadesInfo] = useState<NovedadInfoMap>(new Map());
   const hasPulled = useRef(false);
+
+  /**
+   * Refresh novedades info from Supabase
+   */
+  const refreshNovedades = useCallback(async () => {
+    try {
+      const info = await novedadesService.obtenerNovedadesPorTimestamp();
+      setNovedadesInfo(info);
+    } catch (error) {
+      console.error('[useAttendanceRecords] Refresh novedades error:', error);
+    }
+  }, []);
+
+  /**
+   * Pull-to-refresh handler
+   */
+  const onRefresh = useCallback(async () => {
+    if (!userCedula) return;
+
+    setIsRefreshing(true);
+    try {
+      // Pull new records from Supabase
+      const result = await syncService.pullFromSupabase(userCedula);
+      if (result.success && result.pulled > 0) {
+        console.log(`[useAttendanceRecords] Refreshed ${result.pulled} records from Supabase`);
+      }
+
+      // Refresh novedades info
+      await refreshNovedades();
+    } catch (error) {
+      console.error('[useAttendanceRecords] Refresh error:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [userCedula, refreshNovedades]);
 
   // Pull records from Supabase on first load (if cedula provided)
   useEffect(() => {
@@ -49,6 +92,9 @@ export const useAttendanceRecords = (
           console.log(`[useAttendanceRecords] Pulled ${result.pulled} records from Supabase`);
           setPullResult({ pulled: result.pulled });
         }
+
+        // Also load novedades info (id + estado)
+        await refreshNovedades();
       } catch (error) {
         console.error('[useAttendanceRecords] Pull error:', error);
       } finally {
@@ -58,7 +104,7 @@ export const useAttendanceRecords = (
     };
 
     pullRecords();
-  }, [userCedula]);
+  }, [userCedula, refreshNovedades]);
 
   // Subscribe to local records (reactive)
   useEffect(() => {
@@ -92,17 +138,14 @@ export const useAttendanceRecords = (
           queries.push(Q.where('date', Q.gte(weekAgoStr)));
           break;
         }
-        case 'month': {
+        case 'month':
+        default: {
           const monthAgo = new Date(now);
           monthAgo.setMonth(monthAgo.getMonth() - 1);
           const monthAgoStr = format(monthAgo, 'yyyy-MM-dd');
           queries.push(Q.where('date', Q.gte(monthAgoStr)));
           break;
         }
-        case 'all':
-        default:
-          // No additional date filter
-          break;
       }
 
       // Sort by timestamp descending (newest first)
@@ -129,7 +172,10 @@ export const useAttendanceRecords = (
     records,
     isLoading,
     isPulling,
+    isRefreshing,
     pullResult,
+    novedadesInfo,
+    onRefresh,
   };
 };
 

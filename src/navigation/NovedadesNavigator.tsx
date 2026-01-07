@@ -10,6 +10,7 @@ import type { NovedadesStackParamList } from '@/types/navigation.types';
 import NovedadesScreen from '@screens/novedades/NovedadesScreen';
 import CrearNovedadScreen from '@screens/novedades/CrearNovedadScreen';
 import DetalleNovedadScreen from '@screens/novedades/DetalleNovedadScreen';
+import SolicitarAjusteScreen from '@screens/novedades/SolicitarAjusteScreen';
 import { COLORS, LAYOUT } from '@constants/theme';
 
 const Stack = createStackNavigator<NovedadesStackParamList>();
@@ -48,6 +49,14 @@ export const NovedadesNavigator: React.FC = () => {
         component={DetalleNovedadScreen}
         options={{
           title: 'Detalle de Novedad',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="SolicitarAjuste"
+        component={SolicitarAjusteScreen}
+        options={{
+          title: 'Solicitar Ajuste',
           headerShown: true,
         }}
       />

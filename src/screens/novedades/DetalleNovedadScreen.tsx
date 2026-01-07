@@ -5,9 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  TouchableOpacity,
-  Linking,
-  Platform
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute, type RouteProp } from '@react-navigation/native';
@@ -48,18 +45,7 @@ const DetalleNovedadScreen: React.FC = () => {
     }
   };
 
-  const abrirEnMaps = () => {
-    if (!novedad?.latitud || !novedad?.longitud) return;
-
-    const url = Platform.select({
-      ios: `maps:0,0?q=${novedad.latitud},${novedad.longitud}`,
-      android: `geo:0,0?q=${novedad.latitud},${novedad.longitud}`,
-    });
-
-    if (url) {
-      Linking.openURL(url);
-    }
-  };
+  // Location tracking removed from novedades
 
   if (loading) {
     return (
@@ -119,6 +105,28 @@ const DetalleNovedadScreen: React.FC = () => {
         </View>
       </View>
 
+      {/* Solicitud de Ajuste - solo si hay hora_nueva */}
+      {novedad.hora_nueva && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="clock-edit-outline" size={20} color="#059669" />
+            <Text style={styles.sectionTitle}>Solicitud de Ajuste</Text>
+          </View>
+
+          <View style={styles.horasContainer}>
+            <View style={styles.horaBox}>
+              <Text style={styles.horaLabel}>Hora registrada</Text>
+              <Text style={styles.horaValue}>{novedad.hora_real || '--:--'}</Text>
+            </View>
+            <MaterialCommunityIcons name="arrow-right" size={24} color="#9CA3AF" />
+            <View style={styles.horaBox}>
+              <Text style={styles.horaLabel}>Hora solicitada</Text>
+              <Text style={[styles.horaValue, styles.horaNueva]}>{novedad.hora_nueva}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Motivo */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -127,28 +135,6 @@ const DetalleNovedadScreen: React.FC = () => {
         </View>
         <Text style={styles.motivoText}>{novedad.motivo}</Text>
       </View>
-
-      {/* Ubicación del reporte */}
-      {novedad.latitud && novedad.longitud && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="map-marker" size={20} color="#059669" />
-            <Text style={styles.sectionTitle}>Ubicación del reporte</Text>
-          </View>
-
-          <View style={styles.ubicacionContainer}>
-            <Text style={styles.coordenadasLabel}>Coordenadas:</Text>
-            <Text style={styles.coordenadasValue}>
-              {novedad.latitud.toFixed(6)}, {novedad.longitud.toFixed(6)}
-            </Text>
-
-            <TouchableOpacity style={styles.abrirMapsButton} onPress={abrirEnMaps}>
-              <MaterialCommunityIcons name="map-marker-radius" size={20} color="#FFFFFF" />
-              <Text style={styles.abrirMapsButtonText}>Abrir ubicación en Maps</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {/* Respuesta del administrador */}
       {novedad.estado !== 'pendiente' && (
@@ -277,6 +263,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 22,
+  },
+  horasContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  horaBox: {
+    alignItems: 'center',
+  },
+  horaLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  horaValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  horaNueva: {
+    color: '#059669',
   },
   ubicacionContainer: {
     backgroundColor: '#F9FAFB',

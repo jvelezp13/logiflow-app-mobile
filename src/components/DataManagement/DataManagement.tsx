@@ -131,23 +131,23 @@ export const DataManagement: React.FC = () => {
         </Text>
       </View>
 
-      {/* Force Sync */}
-      <Button
-        title="Forzar Sincronización Ahora"
-        icon="🔄"
-        onPress={handleForceSync}
-        loading={isProcessing}
-        disabled={isProcessing || isVerifying}
-        variant="outline"
-        style={styles.actionButton}
-      />
-
-      {/* Verify Sync */}
+      {/* Verify Sync - first check if there are problems */}
       <Button
         title="Verificar Sincronización"
         icon="🔍"
         onPress={handleVerifySync}
         loading={isVerifying}
+        disabled={isProcessing || isVerifying}
+        variant="outline"
+        style={styles.actionButton}
+      />
+
+      {/* Force Sync - then force if needed */}
+      <Button
+        title="Forzar Sincronización Ahora"
+        icon="🔄"
+        onPress={handleForceSync}
+        loading={isProcessing}
         disabled={isProcessing || isVerifying}
         variant="outline"
         style={styles.actionButton}
