@@ -241,24 +241,10 @@ export const attendanceRecordService = {
 
   /**
    * Get pending sync records
+   * OPTIMIZED: Query only pending/error/syncing records directly (no debug fetch)
    */
   async getPendingSync(): Promise<AttendanceRecord[]> {
     try {
-      // Debug: Get all records first
-      const allRecords = await database
-        .get<AttendanceRecord>('attendance_records')
-        .query()
-        .fetch();
-
-      console.log('[AttendanceRecordService] All records in DB:', {
-        total: allRecords.length,
-        records: allRecords.map(r => ({
-          id: r.id,
-          syncStatus: r.attendanceSyncStatus,
-          hasPin: !!r.kioskPin,
-        })),
-      });
-
       const records = await database
         .get<AttendanceRecord>('attendance_records')
         .query(
@@ -270,11 +256,6 @@ export const attendanceRecordService = {
           Q.sortBy('timestamp', Q.asc)
         )
         .fetch();
-
-      console.log('[AttendanceRecordService] Pending sync records:', {
-        count: records.length,
-        ids: records.map(r => r.id),
-      });
 
       return records;
     } catch (error) {

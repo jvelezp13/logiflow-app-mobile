@@ -273,13 +273,14 @@ export const HomeScreen: React.FC = () => {
   };
 
   /**
-   * Format time
+   * Format time (12-hour format with AM/PM)
    */
   const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('es-ES', {
+    return date.toLocaleTimeString('es-CO', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+      hour12: true,
     });
   };
 

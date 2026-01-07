@@ -5,7 +5,7 @@
  * Allows clock in/out with automatic logout after successful attendance.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,65 @@ import {
   Modal,
   StyleSheet,
 } from 'react-native';
+
+/**
+ * Memoized Clock Component
+ * Updates independently every second without causing parent re-renders.
+ * OPTIMIZATION: Extracted to prevent full screen re-render each second.
+ */
+const ClockDisplay = memo(() => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  return (
+    <View style={clockStyles.container}>
+      <Text style={clockStyles.time}>{formatTime(currentTime)}</Text>
+      <Text style={clockStyles.date}>{formatDate(currentTime)}</Text>
+    </View>
+  );
+});
+
+const clockStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  time: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#059669', // COLORS.primary
+  },
+  date: {
+    fontSize: 14,
+    color: '#6B7280', // COLORS.textSecondary
+    marginTop: 4,
+    textTransform: 'capitalize',
+  },
+});
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/authStore';
 import { useLocation } from '@hooks/useLocation';
@@ -35,8 +94,7 @@ export const KioskHomeScreen: React.FC = () => {
     requestPermission,
   } = useLocation();
 
-  // State
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // State (currentTime moved to ClockDisplay component for optimization)
   const [showCamera, setShowCamera] = useState(false);
   const [selectedType, setSelectedType] = useState<AttendanceType | null>(null);
   const [canClockIn, setCanClockIn] = useState(true);
@@ -49,16 +107,7 @@ export const KioskHomeScreen: React.FC = () => {
     ? `${kioskUser.nombre}${kioskUser.apellido ? ' ' + kioskUser.apellido : ''}`
     : '';
 
-  /**
-   * Update clock every second
-   */
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Clock is now handled by ClockDisplay component (memoized)
 
   /**
    * Load attendance status
@@ -273,28 +322,7 @@ export const KioskHomeScreen: React.FC = () => {
     );
   };
 
-  /**
-   * Format time
-   */
-  const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
-
-  /**
-   * Format date
-   */
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  // formatTime and formatDate moved to ClockDisplay component
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -318,11 +346,8 @@ export const KioskHomeScreen: React.FC = () => {
 
         {/* Clock Section */}
         <View style={styles.clockSection}>
-          {/* Current Time */}
-          <View style={styles.clockTime}>
-            <Text style={styles.currentTime}>{formatTime(currentTime)}</Text>
-            <Text style={styles.currentDate}>{formatDate(currentTime)}</Text>
-          </View>
+          {/* Current Time - Memoized component */}
+          <ClockDisplay />
 
           {/* Clock Buttons */}
           {isLoading ? (

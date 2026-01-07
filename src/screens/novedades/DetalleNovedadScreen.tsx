@@ -21,6 +21,18 @@ type RouteParams = {
   };
 };
 
+/**
+ * Convert 24h time string (HH:mm or HH:mm:ss) to 12h format with AM/PM
+ */
+const formatTimeAmPm = (time: string | null | undefined): string => {
+  if (!time) return '--:--';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
 const DetalleNovedadScreen: React.FC = () => {
   const route = useRoute<RouteProp<RouteParams, 'DetalleNovedad'>>();
   const { novedadId } = route.params;
@@ -116,12 +128,12 @@ const DetalleNovedadScreen: React.FC = () => {
           <View style={styles.horasContainer}>
             <View style={styles.horaBox}>
               <Text style={styles.horaLabel}>Hora registrada</Text>
-              <Text style={styles.horaValue}>{novedad.hora_real || '--:--'}</Text>
+              <Text style={styles.horaValue}>{formatTimeAmPm(novedad.hora_real)}</Text>
             </View>
             <MaterialCommunityIcons name="arrow-right" size={24} color="#9CA3AF" />
             <View style={styles.horaBox}>
               <Text style={styles.horaLabel}>Hora solicitada</Text>
-              <Text style={[styles.horaValue, styles.horaNueva]}>{novedad.hora_nueva}</Text>
+              <Text style={[styles.horaValue, styles.horaNueva]}>{formatTimeAmPm(novedad.hora_nueva)}</Text>
             </View>
           </View>
         </View>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { FlatList, View, Text, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { FlatList, View, Text, StyleSheet, RefreshControl, ActivityIndicator, ListRenderItem } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NovedadCard from './NovedadCard';
 import type { Novedad, EstadoNovedad } from '../../services/novedadesService';
@@ -14,6 +14,10 @@ interface NovedadesListProps {
   isOffline?: boolean;
 }
 
+/**
+ * NovedadesList Component
+ * OPTIMIZED: useCallback for renderItem, useMemo for filtered data
+ */
 const NovedadesList: React.FC<NovedadesListProps> = ({
   novedades,
   onNovedadPress,
@@ -23,9 +27,12 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
   loading = false,
   isOffline = false,
 }) => {
-  const novedadesFiltradas = filtroEstado
-    ? novedades.filter(n => n.estado === filtroEstado)
-    : novedades;
+  // Memoize filtered data to prevent recalculation on each render
+  const novedadesFiltradas = useMemo(() => {
+    return filtroEstado
+      ? novedades.filter(n => n.estado === filtroEstado)
+      : novedades;
+  }, [novedades, filtroEstado]);
 
   const renderEmpty = () => {
     if (loading) {
@@ -111,13 +118,19 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
     );
   };
 
+  // OPTIMIZATION: Memoized renderItem to prevent recreation on each render
+  const renderItem: ListRenderItem<Novedad> = useCallback(({ item }) => (
+    <NovedadCard novedad={item} onPress={() => onNovedadPress(item)} />
+  ), [onNovedadPress]);
+
+  // OPTIMIZATION: Stable keyExtractor
+  const keyExtractor = useCallback((item: Novedad) => item.id, []);
+
   return (
     <FlatList
       data={novedadesFiltradas}
-      renderItem={({ item }) => (
-        <NovedadCard novedad={item} onPress={() => onNovedadPress(item)} />
-      )}
-      keyExtractor={(item) => item.id}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
       contentContainerStyle={[
         styles.listContent,
         novedadesFiltradas.length === 0 && styles.listContentEmpty,

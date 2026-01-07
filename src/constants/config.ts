@@ -21,9 +21,10 @@ export const API_CONFIG = {
 
 /**
  * Sync Configuration
+ * OPTIMIZED: 60s interval for battery savings on low-end devices
  */
 export const SYNC_CONFIG = {
-  autoSyncInterval: 30000, // 30 seconds (when there are pending records)
+  autoSyncInterval: 60000, // 60 seconds (when there are pending records) - optimized for battery
   idleSyncInterval: 3600000, // 1 hour (when there are no pending records)
   maxRetries: 5,
   batchSize: 10, // Records per batch

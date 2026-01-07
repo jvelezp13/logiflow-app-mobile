@@ -2,9 +2,10 @@
  * Button Component
  *
  * Reusable button with loading and disabled states.
+ * OPTIMIZED: Wrapped in React.memo to prevent unnecessary re-renders.
  */
 
-import React from 'react';
+import React, { memo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -23,7 +24,7 @@ export type ButtonProps = TouchableOpacityProps & {
   icon?: string; // Emoji icon
 };
 
-export const Button: React.FC<ButtonProps> = ({
+const ButtonComponent: React.FC<ButtonProps> = ({
   title,
   loading = false,
   disabled = false,
@@ -82,3 +83,6 @@ export const Button: React.FC<ButtonProps> = ({
     </TouchableOpacity>
   );
 };
+
+// Memoized export to prevent unnecessary re-renders
+export const Button = memo(ButtonComponent);

@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 7 de Enero 2026 (Sesión 10)
+**Última actualización:** 7 de Enero 2026 (Sesión 12)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -320,6 +320,116 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 7 de Enero 2026 (Sesión 12) - Generación APK Producción
+
+**Objetivo:** Generar APK para distribución interna (sin Google Play Store)
+
+#### APK Generado
+- **Archivo:** `LogiFlow-Marcaje-v1.0.apk`
+- **Ubicación:** `~/Desktop/LogiFlow-Marcaje-v1.0.apk`
+- **Tamaño:** ~100 MB
+- **Build time:** ~60 minutos (primera compilación)
+
+#### Proceso de Build
+```bash
+# 1. Prebuild (genera proyecto Android nativo)
+npx expo prebuild --platform android --clean
+
+# 2. Build release APK
+cd android && ./gradlew assembleRelease
+
+# 3. APK resultante
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+#### Notas de Build
+- Primera compilación incluye descarga de dependencias + compilación nativa (~60min)
+- Builds subsecuentes son más rápidos (~5-10min)
+- JVM Metaspace warning (non-fatal, puede ignorarse)
+- APK unsigned (para distribución interna, no requiere firma de Play Store)
+
+#### Distribución
+Para instalar en dispositivos de empleados:
+1. Compartir APK por WhatsApp/Drive/correo
+2. En el dispositivo: Ajustes → Seguridad → Permitir "Orígenes desconocidos"
+3. Abrir el APK descargado e instalar
+
+---
+
+### 7 de Enero 2026 (Sesión 11) - Auditoría de Performance
+
+**Contexto:** App corriendo en equipos Android antiguos/lentos de trabajadores de campo.
+
+**Auditoría realizada:** Análisis completo del codebase enfocado en rendimiento para dispositivos de baja gama.
+
+#### Optimizaciones Implementadas (HIGH + MEDIUM Impact)
+
+| Categoría | Cambio | Impacto | Archivo(s) |
+|-----------|--------|---------|------------|
+| **Assets** | Compresión iconos 780KB → 183KB (76% reducción) | HIGH | `assets/icon.png`, `adaptive-icon.png` |
+| **Dependencies** | Eliminadas react-native-maps y uuid (no usadas) | HIGH | `package.json` |
+| **React.memo** | AttendanceCard con comparador custom | HIGH | `AttendanceCard.tsx` |
+| **React.memo** | Button memoizado | MEDIUM | `Button.tsx` |
+| **Component extraction** | ClockDisplay aislado (evita re-render cada segundo) | MEDIUM | `KioskHomeScreen.tsx` |
+| **DB Query** | Eliminada debug query en getPendingSync | MEDIUM | `attendanceRecord.service.ts` |
+| **FlatList** | useCallback en renderItem + useMemo filtros | MEDIUM | `NovedadesList.tsx` |
+| **Battery** | Sync interval 30s → 60s | MEDIUM | `config.ts` |
+
+#### Detalles Técnicos
+
+**AttendanceCard memoization:**
+```typescript
+export const AttendanceCard = memo(AttendanceCardComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.record.id === nextProps.record.id &&
+    prevProps.record.isSynced === nextProps.record.isSynced &&
+    prevProps.record.attendanceSyncStatus === nextProps.record.attendanceSyncStatus &&
+    prevProps.adjustmentStatus === nextProps.adjustmentStatus
+  );
+});
+```
+
+**ClockDisplay extraction:**
+```typescript
+const ClockDisplay = memo(() => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  // ... render solo el reloj
+});
+```
+
+**Compresión de iconos:**
+- Herramienta: pngquant (lossy 80-90% quality)
+- icon.png: 780KB → 183KB
+- adaptive-icon.png: 780KB → 183KB
+- Sin pérdida visual perceptible
+
+#### Issues NO Implementados (Low Priority)
+
+| Issue | Razón para no implementar |
+|-------|---------------------------|
+| Hermes optimizations | Ya habilitado por defecto en Expo SDK 54 |
+| ProGuard rules | Requiere eject de Expo (no recomendado) |
+| Image lazy loading | Lista de novedades es pequeña (< 50 items) |
+
+#### Fixes Adicionales
+
+- **Fix indicador sync ⏳ que no desaparecía:**
+  - Problema: React.memo con comparador custom no detectaba cambios de WatermelonDB
+  - Solución: Cambiado a comparación shallow por defecto (`memo(Component)` sin comparador)
+
+- **Formato AM/PM en toda la app:**
+  - Cambiado de formato 24h a 12h con AM/PM para mejor UX
+  - Archivos modificados:
+    - `AttendanceRecord.ts` (getter `formattedTime`)
+    - `HomeScreen.tsx` (reloj principal)
+    - `KioskHomeScreen.tsx` (reloj kiosco)
+    - `DetalleNovedadScreen.tsx` (horas de ajuste)
+  - Ejemplo: `14:30` → `2:30 PM`
 
 ### 7 de Enero 2026 (Sesión 10)
 - **Fix DateTimePicker en Android:**

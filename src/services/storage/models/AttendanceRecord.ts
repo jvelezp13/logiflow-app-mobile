@@ -96,10 +96,15 @@ export class AttendanceRecord extends Model {
   }
 
   /**
-   * Get formatted time string
+   * Get formatted time string (12-hour format with AM/PM)
    */
   get formattedTime(): string {
-    return this.time;
+    // Convert HH:mm:ss to 12-hour format with AM/PM
+    const [hours, minutes] = this.time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12; // Convert 0 to 12
+    return `${hour12}:${minutes} ${ampm}`;
   }
 
   /**

@@ -3,9 +3,11 @@
  *
  * Compact row display for attendance record with adjustment status indicator.
  * Tappable to request adjustment.
+ *
+ * OPTIMIZED: Wrapped in React.memo to prevent unnecessary re-renders in lists.
  */
 
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { AttendanceRecord } from '@services/storage';
@@ -19,7 +21,32 @@ export type AttendanceCardProps = {
   onPress?: (record: AttendanceRecord) => void;
 };
 
-export const AttendanceCard: React.FC<AttendanceCardProps> = ({
+// Status config moved outside component to prevent recreation on each render
+const STATUS_CONFIG = {
+  pendiente: {
+    icon: 'clock-outline' as const,
+    color: '#92400E',
+    text: 'Pendiente',
+    badgeStyle: styles.statusBadgePending,
+    textStyle: styles.statusTextPending,
+  },
+  aprobada: {
+    icon: 'check-circle-outline' as const,
+    color: '#065F46',
+    text: 'Ajustado',
+    badgeStyle: styles.statusBadgeApproved,
+    textStyle: styles.statusTextApproved,
+  },
+  rechazada: {
+    icon: 'close-circle-outline' as const,
+    color: '#991B1B',
+    text: 'Rechazado',
+    badgeStyle: styles.statusBadgeRejected,
+    textStyle: styles.statusTextRejected,
+  },
+} as const;
+
+const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
   record,
   adjustmentStatus,
   onPress
@@ -44,31 +71,7 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({
   const renderStatusBadge = () => {
     if (!adjustmentStatus) return null;
 
-    const config = {
-      pendiente: {
-        icon: 'clock-outline' as const,
-        color: '#92400E',
-        text: 'Pendiente',
-        badgeStyle: styles.statusBadgePending,
-        textStyle: styles.statusTextPending,
-      },
-      aprobada: {
-        icon: 'check-circle-outline' as const,
-        color: '#065F46',
-        text: 'Ajustado',
-        badgeStyle: styles.statusBadgeApproved,
-        textStyle: styles.statusTextApproved,
-      },
-      rechazada: {
-        icon: 'close-circle-outline' as const,
-        color: '#991B1B',
-        text: 'Rechazado',
-        badgeStyle: styles.statusBadgeRejected,
-        textStyle: styles.statusTextRejected,
-      },
-    };
-
-    const status = config[adjustmentStatus];
+    const status = STATUS_CONFIG[adjustmentStatus];
 
     return (
       <View style={[styles.statusBadge, status.badgeStyle]}>
@@ -104,3 +107,8 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({
     </TouchableOpacity>
   );
 };
+
+// Memoized export to prevent unnecessary re-renders in lists
+// NOTE: Using default shallow comparison instead of custom comparator
+// because WatermelonDB observables return new object references on updates
+export const AttendanceCard = memo(AttendanceCardComponent);
