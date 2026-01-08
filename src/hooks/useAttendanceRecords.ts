@@ -35,7 +35,8 @@ export type NovedadInfoMap = Map<number, NovedadInfo>;
 export const useAttendanceRecords = (
   userId: string | undefined,
   dateFilter: DateFilter = 'month',
-  userCedula?: string | null
+  userCedula?: string | null,
+  queryByCedula: boolean = true // Also query by cedula for pulled records
 ) => {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,9 +122,17 @@ export const useAttendanceRecords = (
       const collection = database.get<AttendanceRecord>('attendance_records');
       const now = new Date();
 
-      // For records pulled from Supabase, userId = cedula
-      // So we need to query by both userId OR userCedula matching the userId
-      let queries: any[] = [Q.where('user_id', userId)];
+      // For records pulled from Supabase, userId = cedula (not auth user ID)
+      // So we need to query by both userId OR userCedula to include pulled records
+      // Build user filter: match by user_id OR user_cedula
+      const userFilter = queryByCedula && userCedula
+        ? Q.or(
+            Q.where('user_id', userId),
+            Q.where('user_cedula', userCedula)
+          )
+        : Q.where('user_id', userId);
+
+      let queries: any[] = [userFilter];
 
       switch (dateFilter) {
         case 'today': {
@@ -156,8 +165,17 @@ export const useAttendanceRecords = (
 
     const query = buildQuery();
 
+    // DEBUG: Log query parameters
+    console.log('[useAttendanceRecords] Query params:', {
+      userId,
+      userCedula,
+      queryByCedula,
+      dateFilter,
+    });
+
     // Subscribe to query (reactive)
     const subscription = query.observe().subscribe((attendanceRecords) => {
+      console.log('[useAttendanceRecords] Query returned:', attendanceRecords.length, 'records');
       setRecords(attendanceRecords);
       setIsLoading(false);
     });
@@ -166,7 +184,7 @@ export const useAttendanceRecords = (
     return () => {
       subscription.unsubscribe();
     };
-  }, [userId, dateFilter]);
+  }, [userId, dateFilter, userCedula, queryByCedula]);
 
   return {
     records,

@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 7 de Enero 2026 (Sesión 12)
+**Última actualización:** 8 de Enero 2026 (Sesión 16 - Correcciones Web Admin + Trigger SQL)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -142,13 +142,45 @@ logiflow-app-mobile/
 | `user_roles` | Roles de usuario | Permisos |
 | `horarios_registros_diarios` | Marcajes entrada/salida | Clock in/out, historial |
 | `horarios_novedades` | Reportes de novedades | Crear, listar, ver detalle |
+| `configuracion` | Config global y por rol | **LEER** para límites (ver abajo) |
+
+### Tabla `configuracion` (IMPORTANTE)
+
+La Web Admin usa esta tabla para configurar límites. La App Móvil debe **leerla** para validar horas:
+
+```sql
+-- Estructura simplificada
+id, rol (nullable), minutos_descanso, max_horas_dia, max_horas_semana,
+hora_inicio_jornada, hora_fin_jornada, trabajo_sabado, activo
+
+-- rol = NULL → config global (aplica a todos)
+-- rol = 'vendedor' → config específica para ese rol
+-- Prioridad: config por rol > config global
+```
+
+### Columnas Nuevas en `horarios_novedades`
+
+La Web Admin agregó soporte para **horas especiales**:
+
+| Columna | Tipo | Propósito |
+|---------|------|-----------|
+| `horas_cantidad` | decimal | Cantidad de horas extra/nocturnas |
+| `generado_automaticamente` | boolean | Si fue creado por sistema vs empleado |
+
+**Tipos de novedad expandidos:**
+- `ajuste_marcaje` - Solicitud de corrección (ya existía)
+- `horas_extra` - **NUEVO** - Horas que exceden max_horas_dia
+- `horas_nocturnas` - **NUEVO** - Horas entre 19:00-06:00
+
+**Estados:** `pendiente`, `aprobada`, `rechazada`
 
 ### Tablas Solo Web Admin
 
 | Tabla | Propósito |
 |-------|-----------|
-| `horarios_alertas_gestion` | Alertas automáticas para admin (ausencias, excesos, etc.) |
-| `configuracion_jornadas_rol` | **NUEVA** - Config de límites por rol + excepciones por cédula |
+| `horarios_alertas_gestion` | Alertas automáticas para admin |
+| `horarios_cierres_semanales` | Cierres generados por semana |
+| `horarios_cierres_detalle` | Detalle por empleado/día de cada cierre |
 
 ---
 
@@ -244,10 +276,14 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 9. **Ajuste de marcaje simplificado:** Las "novedades" ahora son solo solicitudes de ajuste de marcaje. El empleado selecciona un marcaje desde el Historial, indica la hora correcta y el motivo. El admin aprueba/rechaza desde Web Admin.
 
-10. **Efecto de aprobación de ajuste (PENDIENTE - Web Admin):** Cuando el admin aprueba una novedad, actualmente solo cambia `estado` a 'aprobada'. El marcaje original NO se modifica automáticamente. Al construir el nuevo Web Admin, elegir una de estas opciones:
-    - **Opción A) Solo informativo:** La novedad queda como registro. Los reportes consultan `hora_nueva` de novedades aprobadas.
-    - **Opción B) Actualizar marcaje:** Al aprobar, se actualiza `hora` en `horarios_registros_diarios`. El dato original se pierde.
-    - **Opción C) Campo separado (RECOMENDADA):** Agregar columna `hora_ajustada` al registro. Si existe, reportes usan esa. Preserva el dato original para auditoría. Los reportes usarían `COALESCE(hora_ajustada, hora)`.
+10. **Efecto de aprobación de ajuste:** El Web Admin implementó que al aprobar un ajuste se actualiza `ajustado_por_novedad_id` en el registro original para trazabilidad.
+
+11. **Sistema de Horas Especiales (Web Admin - Sesión 16):**
+    - La Web Admin detecta automáticamente cuando un empleado excede `max_horas_dia` o trabaja en horario nocturno (19:00-06:00)
+    - Crea novedades tipo `horas_extra` o `horas_nocturnas` con estado `pendiente`
+    - El admin las aprueba/rechaza desde Novedades
+    - Solo las horas **aprobadas** se contabilizan en cierres semanales
+    - **App Móvil debe**: Mostrar warning al marcar salida si se detectan horas especiales
 
 ---
 
@@ -262,12 +298,133 @@ npx tsc --noEmit             # Verificar errores de tipos
 - Detecta y lista registros huérfanos
 - Opción de reparar: re-marca como "pending" para re-sincronización automática
 
-### Futuro: Web Admin Next.js
+### ✅ COMPLETADO: Web Admin Next.js (Sesiones 13-16)
 
-- Reconstruir desde cero con Next.js + Supabase
-- Incluir: Dashboard, Fotos con mapa, Reportes, Gestión empleados
-- Usar la misma base de datos Supabase
-- El Web Admin v2 actual queda "congelado" (no mantener)
+El Web Admin fue reconstruido completamente. Ver `~/CascadeProjects/logiflow-admin-nextjs/CLAUDE-CONTEXT.md` para detalles.
+
+**Módulos completados:**
+- Dashboard con alertas y estado sync
+- Empleados CRUD con Admin API
+- Marcajes con edición/eliminación
+- Novedades con aprobación de horas especiales
+- Configuración por rol
+- Cierres semanales
+- Reportes analíticos
+
+---
+
+### ✅ RESUELTO: Sesión Offline (Sesión 13 - 8 Ene 2026)
+
+**Problema original:** Al cerrar la app estando offline y reabrirla, pedía login nuevamente aunque el usuario ya estuviera autenticado. Esto impedía marcar asistencia sin conexión.
+
+**Causa raíz:** `AuthService.getCurrentUser()` requiere conexión a Supabase. Cuando está offline, retornaba `null` y el sistema interpretaba esto como "no hay sesión".
+
+**Solución implementada en `authStore.ts`:**
+1. Verificar conexión con NetInfo **antes** de validar con Supabase
+2. Si está offline → usar datos cacheados en AsyncStorage
+3. Si está online → validar normalmente con Supabase
+4. Fallback adicional: si hay cualquier error, intentar usar cache
+
+**Resultado:** Los empleados pueden cerrar y reabrir la app offline, y seguir marcando. Los marcajes se sincronizan cuando recuperen conexión.
+
+**Nota sobre B1 (Persistencia Cola Offline):** El análisis confirmó que WatermelonDB SÍ persiste correctamente los marcajes en SQLite. Los registros "pending" sobreviven al cierre de la app.
+
+---
+
+### ✅ RESUELTO: Badges Historial (Sesión 13 - 8 Ene 2026)
+
+**Problema original:** Los badges de estado (Pendiente/Ajustado/Rechazado) no aparecían en el Historial. Error en consola de Supabase.
+
+**Causa raíz:** Query de Supabase ambigua. Hay dos relaciones entre `horarios_novedades` y `horarios_registros_diarios`, y Supabase no sabía cuál usar.
+
+**Solución:** Especificar la FK explícitamente en la query:
+```typescript
+// Antes (ambiguo):
+horarios_registros_diarios!inner(timestamp_local)
+
+// Después (explícito):
+horarios_registros_diarios!horarios_novedades_marcaje_id_fkey(timestamp_local)
+```
+
+**Mejora adicional:** El pull de historial ahora incluye marcajes agregados por admin desde Web Admin (se quitó filtro `fuente = 'mobile'`).
+
+---
+
+### ✅ B4: Feature - Warning Horas Especiales (COMPLETADO - Sesión 15)
+
+**Contexto del Sistema:**
+- La tabla `configuracion` define límites por rol: `max_horas_dia`, `minutos_descanso`, `hora_inicio_nocturno`, `hora_fin_nocturno`
+- Web Admin detecta horas especiales **solo cuando se editan/guardan marcajes** (NO hay cron)
+- La función `crearNovedadesHorasEspeciales()` en Web Admin crea novedades automáticas tipo `horas_extra` o `horas_nocturnas`
+- El objetivo es que la App Móvil **advierta** al empleado ANTES de que Web Admin detecte
+
+**Flujo Completo:**
+
+```
+ENTRADA (App Móvil):
+├── ¿Hora actual en rango nocturno? (ej: 19:00-06:00)
+│   ├── SÍ → Modal: "Estás entrando en horario nocturno..."
+│   │         [Entendido] → Procede a marcar
+│   └── NO → Marcar entrada normal
+
+SALIDA (App Móvil):
+├── Calcular horas netas = horas brutas - (minutos_descanso / 60)
+├── Verificar:
+│   ├── ¿Horas netas > max_horas_dia?
+│   │   └── SÍ → Modal warning horas extra
+│   └── ¿Hora actual en rango nocturno?
+│       └── SÍ → Modal warning horas nocturnas
+├── Mostrar modal combinado si aplica ambos
+│   [Entendido] → Procede a marcar salida
+└── El marcaje NUNCA se bloquea, solo informa
+
+WEB ADMIN (post-marcaje):
+├── Al sincronizar, detecta si hay horas especiales
+├── Crea novedades automáticas tipo horas_extra/horas_nocturnas
+├── Admin aprueba/rechaza
+└── Solo horas aprobadas cuentan en cierres semanales
+```
+
+**Implementación Requerida:**
+
+1. **Nuevo servicio `configuracion.service.ts`:**
+   - Fetch config del rol del usuario desde tabla `configuracion`
+   - Cache en memoria para no consultar en cada marcaje
+   - Campos: `max_horas_dia`, `minutos_descanso`, `hora_inicio_nocturno`, `hora_fin_nocturno`
+
+2. **Función utilitaria para cálculo de horas:**
+   - Sumar pares entrada/salida del día
+   - Restar `minutos_descanso / 60` para obtener horas netas
+   - Verificar si está en rango nocturno
+
+3. **Componente `SpecialHoursWarningModal`:**
+   - Props: `type` (extra | nocturna | ambas), `horasExtra`, `onConfirm`
+   - Solo botón "Entendido" (sin "Cancelar")
+   - Muestra cantidad de horas extra si aplica
+
+4. **Modificar `attendance.service.ts` (clock-in/out):**
+   - Antes de marcar, verificar condiciones
+   - Si aplica warning, mostrar modal y esperar confirmación
+   - Proceder con marcaje independientemente
+
+5. **Modificar HomeScreen "Horas trabajadas":**
+   - Actualmente muestra horas brutas
+   - Cambiar a: `horasNetas = horasBrutas - (minutosDescanso / 60)`
+   - Mostrar como "X.X h trabajadas (netas)"
+
+**Comportamiento Offline:**
+- Si no hay conexión, no se puede obtener config
+- Marcar sin warning (mejor permitir que bloquear)
+- El warning es informativo, no crítico
+
+---
+
+### 🟡 B5: Feature - Cierres Semanales (Pendiente)
+
+- Mostrar al empleado su cierre semanal publicado
+- Nueva pantalla o sección en Historial
+- Consultar `horarios_cierres_semanales` + `horarios_cierres_detalle`
+- Solo mostrar cierres con `publicado = true`
 
 ---
 
@@ -323,6 +480,178 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 8 de Enero 2026 (Sesión 16) - Correcciones Web Admin + Arquitectura Final Horas Especiales
+
+**Contexto:** Se identificaron 5 bugs críticos en la función de detección de horas especiales en Web Admin Next.js.
+
+**Archivo modificado:** `~/CascadeProjects/logiflow-admin-nextjs/src/app/(dashboard)/marcajes/actions.ts`
+
+**Bugs corregidos:**
+
+| # | Bug | Antes | Después |
+|---|-----|-------|---------|
+| 1 | Solo tomaba primera entrada/salida | `.find()` | Arreglo con pairing cronológico |
+| 2 | No restaba descanso | Horas brutas | `horasNetas = horasBrutas - (minutosDescanso/60)` |
+| 3 | Tabla incorrecta | `horarios_configuracion` (no existe) | `configuracion` |
+| 4 | Horas nocturnas hardcodeadas | 19:00-06:00 fijo | Lee `hora_inicio_nocturno` y `hora_fin_nocturno` de config |
+| 5 | Cálculo nocturno confuso | Lógica incorrecta | Algoritmo con manejo de cruce de medianoche |
+
+**GAP resuelto con trigger SQL:**
+- Los marcajes desde la app móvil ahora SÍ disparan detección automática
+- Creado trigger `trigger_horas_especiales` en tabla `horarios_registros_diarios`
+
+**Funciones SQL creadas:**
+
+1. `obtener_config_empleado(cedula)` - Obtiene config del empleado por rol
+2. `calcular_horas_nocturnas_sesion(...)` - Calcula horas en periodo nocturno
+3. `trigger_detectar_horas_especiales()` - Función principal del trigger
+
+**Bugs del trigger corregidos:**
+
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | Tipo marcaje incorrecto | `'salida'` → `'clock_out'` |
+| 2 | Columna perfil no existe | `p.display_name` → `CONCAT(p.nombre, ' ', p.apellido)` |
+| 3 | Format specifier inválido | `format('%.1f')` → concatenación con `ROUND()` |
+| 4 | Constraint muy restrictivo | Agregados `horas_extra` y `horas_nocturnas` a `chk_tipo_novedad` |
+
+**Arquitectura Final - Decisión de Diseño:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TRIGGER SQL (Supabase)                   │
+│  - Se ejecuta automáticamente en INSERT/UPDATE de marcajes  │
+│  - CREA las novedades de horas_extra/horas_nocturnas        │
+│  - Fuente de verdad para novedades automáticas              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                TypeScript (Web Admin)                        │
+│  - Función: obtenerInfoHorasEspeciales()                    │
+│  - SOLO DETECTA valores para mostrar en UI                  │
+│  - NO CREA novedades (evita duplicación)                    │
+│  - Muestra mensaje informativo al usuario                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Razón:** Evitar duplicación de lógica y novedades. El trigger es la fuente única de creación de novedades automáticas.
+
+**Comportamiento del trigger:**
+- Se ejecuta en INSERT/UPDATE de `horarios_registros_diarios`
+- Solo procesa marcajes de tipo `clock_out`
+- Obtiene TODOS los marcajes del día para el empleado
+- Empareja entradas/salidas cronológicamente
+- Calcula horas brutas, resta descanso, obtiene horas netas
+- Si horas extra > 5 min → crea novedad `horas_extra`
+- Si horas nocturnas > 5 min → crea novedad `horas_nocturnas`
+- Si ya existe novedad del día → la actualiza en vez de duplicar
+
+**Cron jobs de Supabase:**
+- ❌ Eliminado: `cerrar_jornadas_extendidas_automatico` (función no existía)
+- ✅ Mantiene: `marcar_cierres_vencidos` (cada hora, marca cierres como vencidos después de 48h)
+
+---
+
+### 8 de Enero 2026 (Sesión 15) - B4: Warning Horas Especiales
+
+**Feature implementada:** Sistema de advertencias para horas especiales (extra y nocturnas)
+
+**Archivos creados:**
+- `src/services/configuracion.service.ts` - Servicio para obtener configuración por rol desde Supabase
+- `src/components/SpecialHoursWarning/SpecialHoursWarningModal.tsx` - Modal de advertencia
+- `src/components/SpecialHoursWarning/index.ts` - Exports del componente
+
+**Archivos modificados:**
+- `src/screens/main/HomeScreen.tsx` - Integración de warnings en clock-in/out
+- `src/screens/main/HomeScreen.styles.ts` - Nuevo estilo `workedHoursSubtext`
+
+**Funcionalidad implementada:**
+
+1. **Servicio de configuración (`configuracion.service.ts`):**
+   - Obtiene config del rol del usuario desde tabla `configuracion`
+   - Cache de 5 minutos para evitar queries repetidas
+   - Funciones: `getConfigForUser()`, `calculateNetHours()`, `getExtraHours()`, `isNocturnalDecimalHour()`
+
+2. **Modal de warning (`SpecialHoursWarningModal`):**
+   - Tipos de warning: `extra`, `nocturna`, `ambas`
+   - Solo botón "Entendido" (NO bloquea el marcaje)
+   - Muestra cantidad de horas extra si aplica
+   - Diferencia entre entrada y salida
+
+3. **Integración en HomeScreen:**
+   - **Al marcar entrada:** Verifica si es horario nocturno → muestra warning
+   - **Al marcar salida:** Verifica horas extra Y horario nocturno → muestra warning
+   - Después del warning, procede a cámara normalmente
+
+4. **Horas netas en pantalla principal:**
+   - Cambiado de "Horas trabajadas" a "Horas trabajadas (netas)"
+   - Resta `minutos_descanso` de la configuración del rol
+   - Muestra subtexto: "Descanso: X min descontados"
+
+**Comportamiento offline:**
+- Si no hay conexión, no se puede obtener config → marcaje sin warning
+- Es mejor permitir que bloquear (el warning es informativo)
+
+**Pendientes:**
+- B5: Feature vista de cierres semanales
+
+---
+
+### 8 de Enero 2026 (Sesión 14) - Bugs B1-B3 Resueltos
+
+**Bugs resueltos:**
+
+1. **B1/B2: Sesión Offline Persistente** - Empleados pueden cerrar/reabrir app offline y seguir marcando
+   - Modificado `authStore.ts` para verificar NetInfo antes de validar con Supabase
+   - Si offline → usa cache de AsyncStorage
+   - Fallback adicional si hay cualquier error de red
+
+2. **B3: Badges en Historial** - Completamente funcional
+   - Fix query ambigua de Supabase (especificar FK explícita)
+   - Pull-to-refresh ahora incluye marcajes de admin (quitado filtro `fuente = 'mobile'`)
+   - Query local con `Q.or` para incluir registros pulled (userId OR userCedula)
+   - Sincronización de ediciones de admin (comparando `ajustado_at`)
+   - Badges visuales: "Manual" (púrpura) y "Editado" (azul)
+   - Sincronización de eliminaciones desde Web Admin
+
+**Cambios técnicos:**
+- Schema v3: campos `fuente` y `remote_updated_at` para tracking de admin
+- Nuevo método `deleteByTimestamp()` en attendanceRecord.service
+- Pull detecta registros con `deleted_at IS NOT NULL` y los elimina localmente
+
+**Pendientes:**
+- B4: Feature warning horas especiales
+- B5: Feature vista de cierres semanales
+
+---
+
+### 8 de Enero 2026 - Migración Contexto Web Admin
+
+**Contexto:** Se completó el Web Admin Next.js (Sesiones 13-16). Este archivo fue actualizado con información relevante.
+
+**Cambios en DB (aplicados desde Web Admin):**
+- Nueva tabla `configuracion` para límites por rol (reemplaza `configuracion_jornadas_rol`)
+- Columnas nuevas en `horarios_novedades`: `horas_cantidad`, `generado_automaticamente`
+- Tipos de novedad expandidos: `horas_extra`, `horas_nocturnas`
+- Tablas de cierres: `horarios_cierres_semanales`, `horarios_cierres_detalle`
+
+**Sistema de Horas Especiales (cómo funciona):**
+1. Empleado marca salida en App
+2. Web Admin detecta si excede `max_horas_dia` o trabajó en horario nocturno
+3. Crea novedad automática tipo `horas_extra` o `horas_nocturnas`
+4. Admin aprueba/rechaza desde Web Admin
+5. Solo horas aprobadas cuentan en cierres semanales
+
+**Pendientes identificados para App Móvil:**
+- ✅ B1: Bug persistencia offline (RESUELTO Sesión 14)
+- ✅ B2: Bug sesión + offline (RESUELTO Sesión 14)
+- ✅ B3: Bug historial badges (RESUELTO Sesión 14)
+- B4: Feature warning horas especiales
+- B5: Feature vista de cierres
+
+---
 
 ### 7 de Enero 2026 (Sesión 12) - Generación APK Producción
 

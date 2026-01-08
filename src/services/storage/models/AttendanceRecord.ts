@@ -55,6 +55,10 @@ export class AttendanceRecord extends Model {
   @field('sync_attempts') syncAttempts!: number;
   @field('synced_at') syncedAt?: number;
 
+  // Source tracking (for admin edits)
+  @field('fuente') fuente?: string; // 'mobile' | 'admin_manual' | 'admin_edit'
+  @field('remote_updated_at') remoteUpdatedAt?: number; // Timestamp of last remote update
+
   // Timestamps
   @readonly @date('created_at') createdAt!: Date;
   @readonly @date('updated_at') updatedAt!: Date;
@@ -112,5 +116,26 @@ export class AttendanceRecord extends Model {
    */
   get attendanceTypeText(): string {
     return this.attendanceType === 'clock_in' ? 'Entrada' : 'Salida';
+  }
+
+  /**
+   * Check if record was created by admin
+   */
+  get isAdminCreated(): boolean {
+    return this.fuente === 'admin_manual';
+  }
+
+  /**
+   * Check if record was edited by admin
+   */
+  get isAdminEdited(): boolean {
+    return this.fuente === 'admin_edit';
+  }
+
+  /**
+   * Check if record has any admin modification
+   */
+  get hasAdminModification(): boolean {
+    return this.fuente === 'admin_manual' || this.fuente === 'admin_edit';
   }
 }

@@ -87,6 +87,39 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
     );
   };
 
+  /**
+   * Render admin modification badge
+   */
+  const renderAdminBadge = () => {
+    if (record.isAdminCreated) {
+      return (
+        <View style={styles.adminBadge}>
+          <MaterialCommunityIcons
+            name="account-plus-outline"
+            size={14}
+            color="#6B21A8"
+          />
+          <Text style={styles.adminText}>Manual</Text>
+        </View>
+      );
+    }
+
+    if (record.isAdminEdited) {
+      return (
+        <View style={[styles.adminBadge, styles.adminBadgeEdited]}>
+          <MaterialCommunityIcons
+            name="pencil-outline"
+            size={14}
+            color="#1D4ED8"
+          />
+          <Text style={[styles.adminText, styles.adminTextEdited]}>Editado</Text>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <TouchableOpacity
       style={styles.row}
@@ -97,6 +130,7 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
       <Text style={styles.type}>{typeText}</Text>
       <Text style={styles.time}>{record.formattedTime}</Text>
       {showSyncStatus && <Text style={styles.syncIcon}>{syncIcon}</Text>}
+      {renderAdminBadge()}
       {renderStatusBadge()}
       <MaterialCommunityIcons
         name="chevron-right"

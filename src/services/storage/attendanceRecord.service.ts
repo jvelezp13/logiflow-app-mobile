@@ -406,6 +406,8 @@ export const attendanceRecordService = {
     timestamp_local: number;
     hora_inicio_decimal: number | null;
     hora_fin_decimal: number | null;
+    fuente?: string | null;
+    ajustado_at?: string | null;
     // Optional fields (not fetched in optimized pull)
     foto_url?: string | null;
     observaciones?: string | null;
@@ -430,6 +432,9 @@ export const attendanceRecordService = {
       const minutes = Math.round((timeDecimal - hours) * 60);
       const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
 
+      // Parse ajustado_at to timestamp
+      const remoteUpdatedAt = data.ajustado_at ? new Date(data.ajustado_at).getTime() : undefined;
+
       const record = await database.write(async () => {
         return await database.get<AttendanceRecord>('attendance_records').create((rec) => {
           // We don't have userId from remote, use cedula as identifier
@@ -450,6 +455,9 @@ export const attendanceRecordService = {
           rec.attendanceSyncStatus = 'synced';
           rec.syncedAt = Date.now();
           rec.syncAttempts = 0;
+          // Track source and remote update time
+          rec.fuente = data.fuente || 'mobile';
+          rec.remoteUpdatedAt = remoteUpdatedAt;
         });
       });
 
@@ -457,12 +465,102 @@ export const attendanceRecordService = {
         id: record.id,
         timestamp: data.timestamp_local,
         date: data.fecha,
+        fuente: data.fuente,
       });
 
       return record;
     } catch (error) {
       console.error('[AttendanceRecordService] Create from remote error:', error);
       return null;
+    }
+  },
+
+  /**
+   * Update existing record from remote data (for admin edits)
+   * Only updates time-related fields and fuente, preserves local data
+   */
+  async updateFromRemote(data: {
+    timestamp_local: number;
+    hora_inicio_decimal: number | null;
+    hora_fin_decimal: number | null;
+    fuente: string;
+    ajustado_at: string;
+  }): Promise<AttendanceRecord | null> {
+    try {
+      // Find existing record by timestamp
+      const existing = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(Q.where('timestamp', data.timestamp_local))
+        .fetch();
+
+      if (existing.length === 0) {
+        console.log('[AttendanceRecordService] Record not found for update:', data.timestamp_local);
+        return null;
+      }
+
+      const record = existing[0];
+      const remoteUpdatedAt = new Date(data.ajustado_at).getTime();
+
+      // Calculate new time from decimal
+      const timeDecimal = data.hora_inicio_decimal || data.hora_fin_decimal || record.timeDecimal;
+      const hours = Math.floor(timeDecimal);
+      const minutes = Math.round((timeDecimal - hours) * 60);
+      const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+
+      const updated = await database.write(async () => {
+        return await record.update((rec) => {
+          rec.time = timeStr;
+          rec.timeDecimal = timeDecimal;
+          rec.fuente = data.fuente;
+          rec.remoteUpdatedAt = remoteUpdatedAt;
+        });
+      });
+
+      console.log('[AttendanceRecordService] Updated record from remote:', {
+        id: updated.id,
+        timestamp: data.timestamp_local,
+        newTime: timeStr,
+        fuente: data.fuente,
+      });
+
+      return updated;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Update from remote error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get record by timestamp
+   */
+  async getByTimestamp(timestamp: number): Promise<AttendanceRecord | null> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(Q.where('timestamp', timestamp))
+        .fetch();
+      return records.length > 0 ? records[0] : null;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get by timestamp error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get local record with remote_updated_at for comparison
+   */
+  async getLocalRecordsWithRemoteUpdate(): Promise<Map<number, number | undefined>> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query()
+        .fetch();
+      const map = new Map<number, number | undefined>();
+      records.forEach(r => map.set(r.timestamp, r.remoteUpdatedAt));
+      return map;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get local records error:', error);
+      return new Map();
     }
   },
 
@@ -479,6 +577,34 @@ export const attendanceRecordService = {
     } catch (error) {
       console.error('[AttendanceRecordService] Get all timestamps error:', error);
       return [];
+    }
+  },
+
+  /**
+   * Delete record by timestamp
+   * Used to sync deletions from Web Admin
+   */
+  async deleteByTimestamp(timestamp: number): Promise<boolean> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(Q.where('timestamp', timestamp))
+        .fetch();
+
+      if (records.length === 0) {
+        console.log('[AttendanceRecordService] No record found with timestamp:', timestamp);
+        return false;
+      }
+
+      await database.write(async () => {
+        await records[0].markAsDeleted();
+      });
+
+      console.log('[AttendanceRecordService] Record deleted by timestamp:', timestamp);
+      return true;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Delete by timestamp error:', error);
+      return false;
     }
   },
 };

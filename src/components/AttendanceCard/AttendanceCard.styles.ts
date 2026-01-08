@@ -72,6 +72,28 @@ export const styles = StyleSheet.create({
   statusTextRejected: {
     color: '#991B1B',
   },
+  // Admin modification badges
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    marginLeft: SPACING.sm,
+    backgroundColor: '#EDE9FE', // Light purple
+  },
+  adminBadgeEdited: {
+    backgroundColor: '#DBEAFE', // Light blue
+  },
+  adminText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    marginLeft: 4,
+    color: '#6B21A8', // Purple
+  },
+  adminTextEdited: {
+    color: '#1D4ED8', // Blue
+  },
   chevron: {
     marginLeft: SPACING.xs,
   },

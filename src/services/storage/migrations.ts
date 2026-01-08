@@ -20,5 +20,18 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // Migration from v2 to v3: Add fuente and remote_updated_at for admin edit tracking
+    {
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: 'attendance_records',
+          columns: [
+            { name: 'fuente', type: 'string', isOptional: true },
+            { name: 'remote_updated_at', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

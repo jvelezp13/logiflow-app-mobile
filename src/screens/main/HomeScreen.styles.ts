@@ -151,4 +151,10 @@ export const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.primary,
   },
+  workedHoursSubtext: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+    fontStyle: 'italic',
+  },
 });

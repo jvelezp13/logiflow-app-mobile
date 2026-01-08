@@ -54,6 +54,8 @@ export type SyncVerificationResult = {
 export type PullResult = {
   success: boolean;
   pulled: number;
+  updated?: number; // Records updated from admin edits
+  deleted?: number; // Records deleted (synced from Web Admin deletion)
   alreadyLocal: number;
   error?: string;
 };
@@ -647,8 +649,8 @@ export const syncService = {
       console.log(`[SyncService] Found ${localTimestamps.length} local records`);
 
       // Fetch records from Supabase for this user
-      // Only get records from mobile source (fuente = 'mobile')
-      // Optimized: only last 90 days, minimal fields
+      // Includes all sources (mobile + admin-created) for complete history
+      // Optimized: only last 90 days, includes fuente and ajustado_at for edit detection
       type RemoteRecord = {
         cedula: string;
         empleado: string;
@@ -657,6 +659,8 @@ export const syncService = {
         timestamp_local: number;
         hora_inicio_decimal: number | null;
         hora_fin_decimal: number | null;
+        fuente: string | null;
+        ajustado_at: string | null;
       };
 
       // Calculate 90 days ago
@@ -666,11 +670,11 @@ export const syncService = {
 
       const { data: remoteRecords, error: queryError } = await supabase
         .from('horarios_registros_diarios')
-        .select('cedula, empleado, fecha, tipo_marcaje, timestamp_local, hora_inicio_decimal, hora_fin_decimal')
+        .select('cedula, empleado, fecha, tipo_marcaje, timestamp_local, hora_inicio_decimal, hora_fin_decimal, fuente, ajustado_at')
         .eq('cedula', userCedula)
-        .eq('fuente', 'mobile')
         .gte('fecha', minDate)
         .not('timestamp_local', 'is', null)
+        .is('deleted_at', null)
         .order('timestamp_local', { ascending: false }) as { data: RemoteRecord[] | null; error: unknown };
 
       if (queryError) {
@@ -683,25 +687,94 @@ export const syncService = {
         };
       }
 
+      // Also fetch deleted records to sync deletions from Web Admin
+      type DeletedRecord = {
+        timestamp_local: number;
+      };
+
+      const { data: deletedRecords, error: deletedQueryError } = await supabase
+        .from('horarios_registros_diarios')
+        .select('timestamp_local')
+        .eq('cedula', userCedula)
+        .gte('fecha', minDate)
+        .not('timestamp_local', 'is', null)
+        .not('deleted_at', 'is', null) // Only deleted records
+        .order('timestamp_local', { ascending: false }) as { data: DeletedRecord[] | null; error: unknown };
+
+      if (deletedQueryError) {
+        console.error('[SyncService] Error fetching deleted records:', deletedQueryError);
+        // Continue anyway, deletion sync is not critical
+      }
+
+      // Process deleted records - remove local copies
+      let deleted = 0;
+      if (deletedRecords && deletedRecords.length > 0) {
+        console.log(`[SyncService] Found ${deletedRecords.length} deleted records in Supabase`);
+
+        for (const deletedRecord of deletedRecords) {
+          if (!deletedRecord.timestamp_local) continue;
+
+          // Only delete if we have it locally
+          if (localTimestampSet.has(deletedRecord.timestamp_local)) {
+            try {
+              const wasDeleted = await attendanceRecordService.deleteByTimestamp(deletedRecord.timestamp_local);
+              if (wasDeleted) {
+                deleted++;
+                // Remove from local set so we don't try to process it again
+                localTimestampSet.delete(deletedRecord.timestamp_local);
+              }
+            } catch (error) {
+              console.error('[SyncService] Error deleting local record:', error);
+            }
+          }
+        }
+
+        if (deleted > 0) {
+          console.log(`[SyncService] Deleted ${deleted} local records that were removed from server`);
+        }
+      }
+
       if (!remoteRecords || remoteRecords.length === 0) {
         console.log('[SyncService] No remote records found');
         return {
           success: true,
           pulled: 0,
-          alreadyLocal: localTimestamps.length,
+          deleted: deleted > 0 ? deleted : undefined,
+          alreadyLocal: localTimestamps.length - deleted,
         };
       }
 
       console.log(`[SyncService] Found ${remoteRecords.length} remote records`);
 
-      // Filter records that don't exist locally
-      const newRecords = remoteRecords.filter(
-        (r) => r.timestamp_local && !localTimestampSet.has(r.timestamp_local)
-      );
+      // Get local records with their remote_updated_at timestamps
+      const localRecordsMap = await attendanceRecordService.getLocalRecordsWithRemoteUpdate();
 
-      console.log(`[SyncService] ${newRecords.length} records to pull`);
+      // Separate new records from potentially updated records
+      const newRecords: typeof remoteRecords = [];
+      const updatedRecords: typeof remoteRecords = [];
+
+      for (const remote of remoteRecords) {
+        if (!remote.timestamp_local) continue;
+
+        if (!localTimestampSet.has(remote.timestamp_local)) {
+          // New record
+          newRecords.push(remote);
+        } else if (remote.ajustado_at) {
+          // Existing record - check if it was updated remotely
+          const remoteUpdatedAt = new Date(remote.ajustado_at).getTime();
+          const localUpdatedAt = localRecordsMap.get(remote.timestamp_local);
+
+          // Update if remote is newer than local (or local has no update timestamp)
+          if (!localUpdatedAt || remoteUpdatedAt > localUpdatedAt) {
+            updatedRecords.push(remote);
+          }
+        }
+      }
+
+      console.log(`[SyncService] ${newRecords.length} new records, ${updatedRecords.length} updated records to sync`);
 
       let pulled = 0;
+      let updated = 0;
 
       // Create local records for each new remote record
       for (const remote of newRecords) {
@@ -714,6 +787,8 @@ export const syncService = {
             timestamp_local: remote.timestamp_local,
             hora_inicio_decimal: remote.hora_inicio_decimal,
             hora_fin_decimal: remote.hora_fin_decimal,
+            fuente: remote.fuente,
+            ajustado_at: remote.ajustado_at,
           });
 
           if (result) {
@@ -724,18 +799,41 @@ export const syncService = {
         }
       }
 
-      console.log(`[SyncService] Pull complete: ${pulled} records pulled`);
+      // Update existing records that were edited remotely
+      for (const remote of updatedRecords) {
+        try {
+          const result = await attendanceRecordService.updateFromRemote({
+            timestamp_local: remote.timestamp_local,
+            hora_inicio_decimal: remote.hora_inicio_decimal,
+            hora_fin_decimal: remote.hora_fin_decimal,
+            fuente: remote.fuente || 'admin_edit',
+            ajustado_at: remote.ajustado_at!,
+          });
+
+          if (result) {
+            updated++;
+          }
+        } catch (error) {
+          console.error('[SyncService] Error updating local record:', error);
+        }
+      }
+
+      console.log(`[SyncService] Pull complete: ${pulled} new, ${updated} updated, ${deleted} deleted`);
 
       return {
         success: true,
         pulled,
-        alreadyLocal: remoteRecords.length - newRecords.length,
+        updated: updated > 0 ? updated : undefined,
+        deleted: deleted > 0 ? deleted : undefined,
+        alreadyLocal: remoteRecords.length - newRecords.length - updatedRecords.length,
       };
     } catch (error) {
       console.error('[SyncService] Pull from Supabase error:', error);
       return {
         success: false,
         pulled: 0,
+        updated: 0,
+        deleted: 0,
         alreadyLocal: 0,
         error: error instanceof Error ? error.message : 'Error desconocido',
       };

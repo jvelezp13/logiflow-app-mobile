@@ -69,6 +69,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   /**
    * Initialize auth state from persisted session
    * Called on app startup
+   *
+   * OFFLINE SUPPORT: If offline, uses cached user data from AsyncStorage
+   * to allow employees to continue working without internet connection.
    */
   initialize: async () => {
     try {
@@ -90,11 +93,47 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      // Normal mode - try to get current user from Supabase session
+      // First, get cached user data from AsyncStorage
+      const cachedUserData = await AsyncStorage.getItem(STORAGE_KEYS.USER_DATA);
+      const cachedUser: UserData | null = cachedUserData
+        ? JSON.parse(cachedUserData)
+        : null;
+
+      // Check network connectivity first
+      const NetInfo = await import('@react-native-community/netinfo');
+      const netState = await NetInfo.default.fetch();
+      const isOnline = netState.isConnected && netState.isInternetReachable;
+
+      if (!isOnline) {
+        // OFFLINE MODE: Use cached data if available
+        console.log('[AuthStore] Device is offline, checking cache...');
+
+        if (cachedUser) {
+          console.log('[AuthStore] Using cached session for offline mode');
+          set({
+            user: cachedUser,
+            isAuthenticated: true,
+            kioskMode: false,
+            isInitializing: false,
+          });
+        } else {
+          console.log('[AuthStore] Offline and no cached session, login required when online');
+          set({
+            user: null,
+            isAuthenticated: false,
+            kioskMode: false,
+            isInitializing: false,
+          });
+        }
+        return;
+      }
+
+      // ONLINE MODE: Validate session with Supabase
+      console.log('[AuthStore] Device is online, validating session...');
       const user = await AuthService.getCurrentUser();
 
       if (user) {
-        // User has valid session
+        // User has valid session - update cache
         await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
         set({
           user,
@@ -102,8 +141,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           kioskMode: false,
           isInitializing: false,
         });
+        console.log('[AuthStore] Session validated online');
       } else {
-        // No valid session
+        // No valid session from Supabase - clear cache
         await AsyncStorage.removeItem(STORAGE_KEYS.USER_DATA);
         set({
           user: null,
@@ -111,9 +151,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           kioskMode: false,
           isInitializing: false,
         });
+        console.log('[AuthStore] No valid session');
       }
     } catch (error) {
       console.error('[AuthStore] Initialize error:', error);
+
+      // On any error: try to use cached data as fallback
+      try {
+        const cachedUserData = await AsyncStorage.getItem(STORAGE_KEYS.USER_DATA);
+        if (cachedUserData) {
+          const cachedUser: UserData = JSON.parse(cachedUserData);
+          console.log('[AuthStore] Recovered session from cache after error');
+          set({
+            user: cachedUser,
+            isAuthenticated: true,
+            kioskMode: false,
+            isInitializing: false,
+          });
+          return;
+        }
+      } catch {
+        // Ignore cache read errors
+      }
+
       set({
         user: null,
         isAuthenticated: false,

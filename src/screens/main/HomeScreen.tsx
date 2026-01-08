@@ -4,7 +4,7 @@
  * Main screen for attendance clock in/out functionality.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,14 @@ import { attendanceService } from '@services/attendance';
 import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
+import { SpecialHoursWarningModal, WarningType } from '@components/SpecialHoursWarning';
+import {
+  getConfigForUser,
+  calculateNetHours,
+  getExtraHours,
+  isNocturnalDecimalHour,
+  type RoleConfig,
+} from '@services/configuracion.service';
 import type { AttendanceRecord, AttendanceType } from '@services/storage';
 import { styles } from './HomeScreen.styles';
 
@@ -49,6 +57,16 @@ export const HomeScreen: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false); // Processing attendance record
   const [processingType, setProcessingType] = useState<AttendanceType | null>(null); // Type being processed
 
+  // Configuration and special hours warning state
+  const [roleConfig, setRoleConfig] = useState<RoleConfig | null>(null);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [warningType, setWarningType] = useState<WarningType>('extra');
+  const [pendingExtraHours, setPendingExtraHours] = useState(0);
+  const [pendingPhotoData, setPendingPhotoData] = useState<{
+    uri: string;
+    base64: string;
+  } | null>(null);
+
   /**
    * Update clock every second
    */
@@ -67,8 +85,25 @@ export const HomeScreen: React.FC = () => {
     if (user?.id) {
       console.log('[HomeScreen] User available, loading data');
       loadData();
+      loadRoleConfig();
     }
   }, [user?.id]); // Re-run when user becomes available
+
+  /**
+   * Load role configuration for special hours warnings
+   */
+  const loadRoleConfig = async () => {
+    if (!user?.id) return;
+
+    try {
+      const config = await getConfigForUser(user.id);
+      setRoleConfig(config);
+      console.log('[HomeScreen] Role config loaded:', config);
+    } catch (error) {
+      console.error('[HomeScreen] Failed to load role config:', error);
+      // Continue without config - warnings will be skipped
+    }
+  };
 
   /**
    * Load today's records and check clock state
@@ -128,7 +163,34 @@ export const HomeScreen: React.FC = () => {
   };
 
   /**
+   * Check if current time is in nocturnal hours
+   */
+  const checkNocturnalHours = useCallback((): boolean => {
+    if (!roleConfig) return false;
+    const now = new Date();
+    const currentDecimalHour = now.getHours() + now.getMinutes() / 60;
+    return isNocturnalDecimalHour(currentDecimalHour, roleConfig);
+  }, [roleConfig]);
+
+  /**
+   * Calculate projected hours if clocking out now
+   */
+  const calculateProjectedHours = useCallback((): { netHours: number; extraHours: number } => {
+    if (!roleConfig || todayRecords.length === 0) {
+      return { netHours: 0, extraHours: 0 };
+    }
+
+    // Get gross hours including current open session
+    const { hours: grossHours } = calculateWorkedHours();
+    const netHours = calculateNetHours(grossHours, roleConfig.minutosDescanso);
+    const extraHours = getExtraHours(netHours, roleConfig.maxHorasDia);
+
+    return { netHours, extraHours };
+  }, [roleConfig, todayRecords]);
+
+  /**
    * Handle clock in button
+   * Checks for nocturnal hours and shows warning if needed
    */
   const handleClockIn = () => {
     if (!canClockIn || isProcessing) {
@@ -136,12 +198,23 @@ export const HomeScreen: React.FC = () => {
       return;
     }
 
+    // Check if clocking in during nocturnal hours
+    if (roleConfig && checkNocturnalHours()) {
+      setSelectedType('clock_in');
+      setWarningType('nocturna');
+      setPendingExtraHours(0);
+      setShowWarningModal(true);
+      return;
+    }
+
+    // No warning needed, proceed to camera
     setSelectedType('clock_in');
     setShowCamera(true);
   };
 
   /**
    * Handle clock out button
+   * Checks for extra hours and nocturnal hours, shows warning if needed
    */
   const handleClockOut = () => {
     if (!canClockOut || isProcessing) {
@@ -149,7 +222,47 @@ export const HomeScreen: React.FC = () => {
       return;
     }
 
+    // Check for special hours
+    if (roleConfig) {
+      const { extraHours } = calculateProjectedHours();
+      const isNocturnal = checkNocturnalHours();
+
+      if (extraHours > 0 && isNocturnal) {
+        setSelectedType('clock_out');
+        setWarningType('ambas');
+        setPendingExtraHours(extraHours);
+        setShowWarningModal(true);
+        return;
+      }
+
+      if (extraHours > 0) {
+        setSelectedType('clock_out');
+        setWarningType('extra');
+        setPendingExtraHours(extraHours);
+        setShowWarningModal(true);
+        return;
+      }
+
+      if (isNocturnal) {
+        setSelectedType('clock_out');
+        setWarningType('nocturna');
+        setPendingExtraHours(0);
+        setShowWarningModal(true);
+        return;
+      }
+    }
+
+    // No warning needed, proceed to camera
     setSelectedType('clock_out');
+    setShowCamera(true);
+  };
+
+  /**
+   * Handle warning modal confirmation
+   * Proceeds to camera after user acknowledges warning
+   */
+  const handleWarningConfirm = () => {
+    setShowWarningModal(false);
     setShowCamera(true);
   };
 
@@ -379,15 +492,26 @@ export const HomeScreen: React.FC = () => {
 
           {/* Worked Hours Summary - only show if there are records */}
           {todayRecords.length > 0 && (() => {
-            const { hours, isInProgress } = calculateWorkedHours();
+            const { hours: grossHours, isInProgress } = calculateWorkedHours();
+            // Calculate net hours (subtracting break time) if we have config
+            const netHours = roleConfig
+              ? calculateNetHours(grossHours, roleConfig.minutosDescanso)
+              : grossHours;
+            const showNetLabel = roleConfig && roleConfig.minutosDescanso > 0;
+
             return (
               <View style={styles.workedHoursContainerTop}>
                 <Text style={styles.workedHoursLabelTop}>
-                  Horas trabajadas{isInProgress ? ' (en curso)' : ''}
+                  Horas trabajadas{showNetLabel ? ' (netas)' : ''}{isInProgress ? ' - en curso' : ''}
                 </Text>
                 <Text style={styles.workedHoursValueTop}>
-                  {formatWorkedHours(hours)}
+                  {formatWorkedHours(netHours)}
                 </Text>
+                {showNetLabel && (
+                  <Text style={styles.workedHoursSubtext}>
+                    Descanso: {roleConfig.minutosDescanso} min descontados
+                  </Text>
+                )}
               </View>
             );
           })()}
@@ -455,6 +579,15 @@ export const HomeScreen: React.FC = () => {
         }}
         onCapture={handlePhotoCapture}
         title={selectedType === 'clock_in' ? 'Foto de Entrada' : 'Foto de Salida'}
+      />
+
+      {/* Special Hours Warning Modal */}
+      <SpecialHoursWarningModal
+        visible={showWarningModal}
+        type={warningType}
+        horasExtra={pendingExtraHours}
+        isEntry={selectedType === 'clock_in'}
+        onConfirm={handleWarningConfirm}
       />
 
       {/* Processing Overlay */}

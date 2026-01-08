@@ -366,13 +366,16 @@ class NovedadesService {
       }
 
       // Join novedades con registros para obtener timestamp_local
+      // Nota: Especificamos la FK explícitamente porque hay 2 relaciones entre estas tablas:
+      // 1. horarios_novedades.marcaje_id -> horarios_registros_diarios.id (la que usamos)
+      // 2. horarios_registros_diarios.ajustado_por_novedad_id -> horarios_novedades.id
       const { data, error } = await supabase
         .from('horarios_novedades')
         .select(`
           id,
           estado,
           marcaje_id,
-          horarios_registros_diarios!inner(timestamp_local)
+          horarios_registros_diarios!horarios_novedades_marcaje_id_fkey(timestamp_local)
         `)
         .eq('user_id', user.id)
         .not('marcaje_id', 'is', null) as {
