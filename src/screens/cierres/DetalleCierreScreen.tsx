@@ -309,10 +309,37 @@ export const DetalleCierreScreen: React.FC = () => {
           {datos_semana.dias.map((dia, index) => renderDia(dia, index))}
         </View>
 
+        {/* Admin response (B6) - Shows when admin has responded to previous objection */}
+        {cierre.respuesta_admin && (
+          <View style={[styles.section, styles.respuestaSection]}>
+            <View style={styles.respuestaHeader}>
+              <MaterialCommunityIcons
+                name="message-reply-text"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text style={styles.sectionTitle}>Respuesta del administrador</Text>
+            </View>
+            <Text style={styles.respuestaTexto}>{cierre.respuesta_admin}</Text>
+            {cierre.respondido_at && (
+              <Text style={styles.respuestaFecha}>
+                Respondido el {format(parseISO(cierre.respondido_at), "d 'de' MMMM, HH:mm", { locale: es })}
+              </Text>
+            )}
+            {cierre.estado === 'publicado' && (
+              <Text style={styles.respuestaHint}>
+                El administrador ha revisado tu objeción. Por favor revisa los ajustes y confirma o vuelve a objetar.
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* Existing objections */}
         {cierre.objecion_dias && cierre.objecion_dias.length > 0 && (
           <View style={[styles.section, styles.objecionSection]}>
-            <Text style={styles.sectionTitle}>Dias objetados</Text>
+            <Text style={styles.sectionTitle}>
+              {cierre.respuesta_admin ? 'Tu objeción anterior' : 'Dias objetados'}
+            </Text>
             {cierre.objecion_dias.map((obj, index) => (
               <View key={index} style={styles.objecionItem}>
                 <Text style={styles.objecionFecha}>
@@ -569,6 +596,33 @@ const styles = StyleSheet.create({
   },
   diaDescansoText: {
     color: COLORS.textTertiary,
+  },
+  respuestaSection: {
+    backgroundColor: '#EFF6FF',
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+  },
+  respuestaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  respuestaTexto: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    lineHeight: 22,
+  },
+  respuestaFecha: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.sm,
+  },
+  respuestaHint: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    marginTop: SPACING.sm,
+    fontStyle: 'italic',
   },
   objecionSection: {
     backgroundColor: '#FEF2F2',

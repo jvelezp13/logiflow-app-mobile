@@ -32,6 +32,11 @@ interface CierreRow {
   publicado_at: string | null;
   confirmado_at: string | null;
   objecion_dias: ObjecionDia[] | null;
+  objecion_at: string | null;
+  // Campos de respuesta del admin (B6)
+  respuesta_admin: string | null;
+  respondido_at: string | null;
+  respondido_por: string | null;
   vencido_at: string | null;
   created_at: string;
   updated_at: string;
