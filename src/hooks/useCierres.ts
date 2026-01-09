@@ -171,6 +171,55 @@ export const useCierres = (cedula: string | null) => {
     [onRefresh]
   );
 
+  /**
+   * Confirma un cierre semanal con evidencia (foto + firma)
+   */
+  const confirmarCierreConEvidencia = useCallback(
+    async (
+      id: string,
+      fotoBase64: string,
+      firmaBase64: string,
+      cedulaEmpleado: string
+    ): Promise<boolean> => {
+      const hasConnection = await checkConnection();
+      if (!hasConnection) {
+        Alert.alert(
+          'Sin conexión',
+          'Necesitas conexión a internet para confirmar el cierre.'
+        );
+        return false;
+      }
+
+      // 1. Subir evidencia a Storage
+      const evidenceUrls = await cierresService.uploadCierreEvidence(
+        id,
+        cedulaEmpleado,
+        fotoBase64,
+        firmaBase64
+      );
+
+      if (!evidenceUrls) {
+        Alert.alert('Error', 'No se pudo subir la evidencia. Intenta nuevamente.');
+        return false;
+      }
+
+      // 2. Confirmar cierre con URLs
+      const success = await cierresService.confirmarCierreConEvidencia(
+        id,
+        evidenceUrls.fotoUrl,
+        evidenceUrls.firmaUrl
+      );
+
+      if (success) {
+        await onRefresh();
+        // El alert de éxito lo maneja el componente llamador
+      }
+
+      return success;
+    },
+    [onRefresh]
+  );
+
   // Cargar datos al montar o cuando cambie la cédula
   useEffect(() => {
     if (cedula) {
@@ -188,6 +237,7 @@ export const useCierres = (cedula: string | null) => {
     onRefresh,
     obtenerCierrePorId,
     confirmarCierre,
+    confirmarCierreConEvidencia,
     objetarCierre,
   };
 };

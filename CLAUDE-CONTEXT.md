@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 9 de Enero 2026 (Sesión 17 - B5: Vista de Cierres Semanales)
+**Última actualización:** 9 de Enero 2026 (Sesión 18 - B7: Validación Selfie + Firma)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -508,6 +508,58 @@ TIMEOUT: 48h sin respuesta → estado = 'vencido' (cron existente)
 
 ---
 
+### ✅ B7: Validación Selfie + Firma en Confirmación (COMPLETADO - Sesión 18)
+
+**Feature implementada:** Validación de confirmación de cierres con selfie y firma digital.
+
+**Cambios en BD:**
+- Migración: `add_confirmation_evidence_to_cierres`
+- Nuevas columnas en `cierres_semanales`:
+  - `foto_confirmacion_url TEXT` - URL de la selfie al confirmar
+  - `firma_confirmacion_url TEXT` - URL de la firma digital al confirmar
+
+**Archivos creados (App Móvil):**
+| Archivo | Propósito |
+|---------|-----------|
+| `src/components/Signature/SignatureCapture.tsx` | Modal canvas para capturar firma con el dedo |
+| `src/components/Signature/SignatureCapture.styles.ts` | Estilos del modal de firma |
+| `src/components/Signature/index.ts` | Exports del componente |
+| `src/components/cierres/ConfirmacionCierreFlow.tsx` | Orquestador del flujo (selfie→firma→upload) |
+
+**Archivos modificados (App Móvil):**
+| Archivo | Cambio |
+|---------|--------|
+| `src/types/cierres.types.ts` | Campos `foto_confirmacion_url`, `firma_confirmacion_url` |
+| `src/services/cierresService.ts` | Métodos `uploadCierreEvidence()`, `confirmarCierreConEvidencia()` |
+| `src/hooks/useCierres.ts` | Método `confirmarCierreConEvidencia()` |
+| `src/screens/cierres/DetalleCierreScreen.tsx` | Integración del flujo de confirmación |
+
+**Flujo implementado:**
+```
+Usuario presiona "Confirmar"
+    ↓
+Alert: "Se te pedirá selfie y firma"
+    ↓
+Modal CameraCapture (selfie)
+    ↓
+Modal SignatureCapture (firma con el dedo)
+    ↓
+Procesando: sube foto + firma a Storage
+    ↓
+UPDATE cierres_semanales con URLs + estado + timestamp
+    ↓
+Éxito: navega atrás
+```
+
+**Storage:**
+- Bucket: `attendance_photos` (reutilizado)
+- Ruta: `cierres/{cedula}/{cierre_id}_foto_{timestamp}.jpg`
+- Ruta: `cierres/{cedula}/{cierre_id}_firma_{timestamp}.png`
+
+**Dependencia nueva:** `react-native-signature-canvas`
+
+---
+
 ## Roadmap: Sistema de Control de Jornadas
 
 ### Fase 1: Ajuste de Marcaje (Sesión 8-10 - COMPLETADA)
@@ -522,17 +574,6 @@ TIMEOUT: 48h sin respuesta → estado = 'vencido' (cron existente)
 - [x] Indicadores visuales en Historial (pendiente/aprobado/rechazado)
 - [x] Detección de novedades existentes → navegar a detalle en vez de crear
 - [x] Tab Novedades oculto (acceso solo desde Historial)
-
-### Fase 2: Tracking de Ubicación (Futuro)
-- Nueva tabla `ubicaciones_jornada` para tracking periódico
-- Servicio background que envía ubicación cada 30-60 min
-- Solo activo entre entrada y salida
-- Trazabilidad de que el empleado estuvo trabajando
-
-### Fase 3: Límites Automáticos (Futuro - requiere Web Admin)
-- Alertas cuando jornada > max_horas_dia configurado
-- Bloqueo/alerta de marcajes en horario nocturno (antes 6am, después 7pm)
-- Requiere autorización especial para extender jornada
 
 ### Estructura de `configuracion_jornadas_rol`
 ```sql

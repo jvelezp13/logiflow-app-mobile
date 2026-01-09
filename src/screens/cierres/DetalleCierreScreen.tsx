@@ -23,6 +23,7 @@ import { useRoute, useNavigation, type RouteProp } from '@react-navigation/nativ
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import CierreStatusBadge from '@/components/cierres/CierreStatusBadge';
+import { ConfirmacionCierreFlow } from '@/components/cierres/ConfirmacionCierreFlow';
 import useCierres from '@/hooks/useCierres';
 import { useAuth } from '@/hooks/useAuth';
 import type { CierreSemanal, DiaCierre, ObjecionDia } from '@/types/cierres.types';
@@ -35,7 +36,7 @@ export const DetalleCierreScreen: React.FC = () => {
   const route = useRoute<RouteParams>();
   const navigation = useNavigation();
   const { userCedula } = useAuth();
-  const { obtenerCierrePorId, confirmarCierre, objetarCierre } = useCierres(userCedula);
+  const { obtenerCierrePorId, confirmarCierreConEvidencia, objetarCierre } = useCierres(userCedula);
 
   const [cierre, setCierre] = useState<CierreSemanal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,9 @@ export const DetalleCierreScreen: React.FC = () => {
   const [showObjecionModal, setShowObjecionModal] = useState(false);
   const [diasSeleccionados, setDiasSeleccionados] = useState<Set<string>>(new Set());
   const [comentarioObjecion, setComentarioObjecion] = useState('');
+
+  // State for confirmation flow (B7)
+  const [showConfirmacionFlow, setShowConfirmacionFlow] = useState(false);
 
   const cargarCierre = useCallback(async () => {
     try {
@@ -82,27 +86,49 @@ export const DetalleCierreScreen: React.FC = () => {
   };
 
   /**
-   * Handle confirming the closure
+   * Handle confirming the closure (B7: with selfie + signature)
    */
   const handleConfirmar = () => {
     Alert.alert(
       'Confirmar cierre',
-      '¿Estas de acuerdo con las horas registradas para esta semana?',
+      '¿Estas de acuerdo con las horas registradas para esta semana?\n\nSe te pedira una selfie y tu firma como evidencia.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Confirmar',
-          onPress: async () => {
-            setProcesando(true);
-            const success = await confirmarCierre(route.params.cierreId);
-            setProcesando(false);
-            if (success) {
-              navigation.goBack();
-            }
-          },
+          text: 'Continuar',
+          onPress: () => setShowConfirmacionFlow(true),
         },
       ]
     );
+  };
+
+  /**
+   * Handle confirmation with evidence (B7)
+   */
+  const handleConfirmWithEvidence = async (
+    fotoBase64: string,
+    firmaBase64: string
+  ): Promise<boolean> => {
+    if (!userCedula) {
+      Alert.alert('Error', 'No se pudo obtener la cedula del usuario.');
+      return false;
+    }
+
+    const success = await confirmarCierreConEvidencia(
+      route.params.cierreId,
+      fotoBase64,
+      firmaBase64,
+      userCedula
+    );
+
+    if (success) {
+      Alert.alert('Confirmado', 'El cierre ha sido confirmado exitosamente.');
+      navigation.goBack();
+    } else {
+      Alert.alert('Error', 'No se pudo confirmar el cierre. Intenta nuevamente.');
+    }
+
+    return success;
   };
 
   /**
@@ -444,6 +470,15 @@ export const DetalleCierreScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Confirmation Flow with Evidence (B7) */}
+      <ConfirmacionCierreFlow
+        visible={showConfirmacionFlow}
+        cierreId={route.params.cierreId}
+        cedula={userCedula || ''}
+        onClose={() => setShowConfirmacionFlow(false)}
+        onConfirm={handleConfirmWithEvidence}
+      />
     </SafeAreaView>
   );
 };

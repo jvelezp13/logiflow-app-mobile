@@ -88,6 +88,9 @@ export interface CierreSemanal {
   respuesta_admin: string | null;
   respondido_at: string | null;
   respondido_por: string | null;
+  // Campos de evidencia de confirmación (B7)
+  foto_confirmacion_url: string | null;
+  firma_confirmacion_url: string | null;
   vencido_at: string | null;
   created_at: string;
   updated_at: string;
