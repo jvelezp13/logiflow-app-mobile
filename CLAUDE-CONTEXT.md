@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 8 de Enero 2026 (Sesión 16 - Correcciones Web Admin + Trigger SQL)
+**Última actualización:** 9 de Enero 2026 (Sesión 17 - B5: Vista de Cierres Semanales)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -419,12 +419,131 @@ WEB ADMIN (post-marcaje):
 
 ---
 
-### 🟡 B5: Feature - Cierres Semanales (Pendiente)
+### ✅ B5: Vista de Cierres Semanales (COMPLETADO - Sesión 17)
 
-- Mostrar al empleado su cierre semanal publicado
-- Nueva pantalla o sección en Historial
-- Consultar `horarios_cierres_semanales` + `horarios_cierres_detalle`
-- Solo mostrar cierres con `publicado = true`
+**Feature implementada:** Sistema completo para que empleados vean y gestionen sus cierres semanales.
+
+**Archivos creados:**
+- `src/types/cierres.types.ts` - Tipos: EstadoCierre, DiaCierre, TotalesCierre, CierreSemanal, ObjecionDia
+- `src/services/cierresService.ts` - Service con type assertions para tabla no tipada
+- `src/hooks/useCierres.ts` - Hook con NetInfo para validar conexión
+- `src/components/cierres/CierreStatusBadge.tsx` - Badge con colores por estado
+- `src/components/cierres/CierreCard.tsx` - Card memoizado para lista
+- `src/components/cierres/CierresList.tsx` - FlatList con empty/offline states
+- `src/screens/cierres/DetalleCierreScreen.tsx` - Pantalla de detalle completa
+- `src/navigation/CierresNavigator.tsx` - Stack navigator
+
+**Archivos modificados:**
+- `src/types/navigation.types.ts` - Agregado CierresStackParamList
+- `src/navigation/MainNavigator.tsx` - Tab oculto para Cierres
+- `src/hooks/useAttendanceRecords.ts` - 'cierres' agregado a DateFilter
+- `src/screens/main/HistoryScreen.tsx` - Filtro "Cierres" + renderizado condicional
+
+**Funcionalidad:**
+- Filtro "Cierres" en HistoryScreen (junto a Hoy|Semana|Mes)
+- Lista de cierres publicados (no borradores) con estado visual
+- Pantalla de detalle con resumen semanal y tabla de días
+- **Confirmar cierre:** estado → 'confirmado', confirmado_at = now()
+- **Objetar cierre:** Modal para seleccionar días + comentario (min 10 chars)
+- Requiere conexión (no funciona offline)
+
+**Nota técnica:** La tabla `cierres_semanales` no está en los tipos generados de Supabase. Se usaron type assertions (`as never`) y una interfaz interna `CierreRow`.
+
+---
+
+### 🟡 B6: Flujo Completo de Objeciones (Pendiente - Futuro)
+
+**Estado actual:** El empleado puede objetar un cierre, pero el admin NO puede responder.
+
+**Gap identificado:**
+
+```
+FLUJO ACTUAL (incompleto):
+1. Admin publica cierre → estado = 'publicado'
+2. Empleado objetar días + comentario → estado = 'objetado'
+3. ??? (Admin ve objeción pero no puede hacer nada)
+```
+
+**FLUJO COMPLETO (diseño para futuro):**
+
+```
+CICLO DE VIDA DE UN CIERRE:
+
+1. BORRADOR (solo admin ve)
+   Admin crea cierre → estado = 'borrador'
+                           ↓
+2. PUBLICADO (empleado ve)
+   Admin publica → estado = 'publicado', publicado_at = now()
+                           ↓
+         ┌────────────────┴────────────────┐
+         ↓                                 ↓
+3a. CONFIRMADO                    3b. OBJETADO
+    Empleado confirma                Empleado objeta
+    estado = 'confirmado'            estado = 'objetado'
+    confirmado_at = now()            objecion_dias = [{fecha, comentario}]
+         ↓                                 ↓
+    ✅ FIN (cierre OK)             4. ADMIN RESPONDE (NUEVO)
+                                       Admin revisa y responde
+                                       respuesta_admin = "texto"
+                                       respondido_at = now()
+                                             ↓
+                                   5. RE-PUBLICAR (NUEVO)
+                                       Admin ajusta datos si necesario
+                                       estado = 'publicado' (de nuevo)
+                                       publicado_at = now() (actualiza)
+                                             ↓
+                                       Volver a paso 3
+
+TIMEOUT:
+   Si pasan 48h sin confirmar/objetar → estado = 'vencido' (cron existente)
+```
+
+**Cambios requeridos en BD:**
+
+```sql
+-- Nuevas columnas en cierres_semanales
+ALTER TABLE cierres_semanales
+ADD COLUMN respuesta_admin TEXT,
+ADD COLUMN respondido_at TIMESTAMPTZ;
+
+-- Historial de interacciones (opcional, para auditoría)
+CREATE TABLE cierres_interacciones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cierre_id UUID REFERENCES cierres_semanales(id),
+  tipo VARCHAR(20) NOT NULL, -- 'objecion', 'respuesta', 'confirmacion'
+  contenido JSONB, -- días objetados, respuesta, etc.
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Cambios requeridos en Web Admin:**
+
+1. **Pantalla de detalle de cierre:**
+   - Sección "Objeciones del empleado" cuando estado='objetado'
+   - Campo de texto "Respuesta del admin"
+   - Botón "Responder y re-publicar"
+
+2. **Lógica de respuesta:**
+   - Guardar `respuesta_admin` y `respondido_at`
+   - Opción de ajustar datos de `datos_semana` si el empleado tiene razón
+   - Cambiar estado de vuelta a 'publicado'
+
+3. **Dashboard de alertas:**
+   - Nueva alerta: "Cierres objetados sin responder"
+
+**Cambios requeridos en App Móvil:**
+
+1. **DetalleCierreScreen:**
+   - Si estado='publicado' y hay `respuesta_admin` previa:
+     - Mostrar sección "Respuesta del administrador"
+     - El empleado ve que su objeción fue revisada
+
+2. **Notificaciones (opcional):**
+   - Push notification cuando admin responde a objeción
+   - "Tu objeción del cierre X fue respondida"
+
+**Prioridad:** BAJA - El flujo actual permite objetar, el admin lo ve en Web Admin. La respuesta formal puede agregarse cuando haya volumen real de objeciones.
 
 ---
 
@@ -480,6 +599,58 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 9 de Enero 2026 (Sesión 17) - B5: Vista de Cierres Semanales
+
+**Feature implementada:** Sistema completo para que empleados vean y gestionen sus cierres semanales desde la app móvil.
+
+**Archivos creados:**
+| Archivo | Propósito |
+|---------|-----------|
+| `src/types/cierres.types.ts` | Tipos: EstadoCierre, DiaCierre, TotalesCierre, CierreSemanal, ObjecionDia |
+| `src/services/cierresService.ts` | CRUD para cierres con type assertions (tabla no tipada) |
+| `src/hooks/useCierres.ts` | Hook con NetInfo para validar conexión antes de acciones |
+| `src/components/cierres/CierreStatusBadge.tsx` | Badge con colores por estado |
+| `src/components/cierres/CierreCard.tsx` | Card memoizado para lista |
+| `src/components/cierres/CierresList.tsx` | FlatList con empty/offline states |
+| `src/screens/cierres/DetalleCierreScreen.tsx` | Detalle completo con confirmar/objetar |
+| `src/navigation/CierresNavigator.tsx` | Stack navigator para cierres |
+
+**Archivos modificados:**
+| Archivo | Cambio |
+|---------|--------|
+| `src/types/navigation.types.ts` | Agregado `CierresStackParamList` |
+| `src/navigation/MainNavigator.tsx` | Tab oculto para Cierres |
+| `src/hooks/useAttendanceRecords.ts` | 'cierres' agregado a DateFilter |
+| `src/screens/main/HistoryScreen.tsx` | Filtro "Cierres" + renderizado condicional |
+
+**Funcionalidad:**
+- Nuevo filtro "Cierres" en Historial (junto a Hoy|Semana|Mes)
+- Lista de cierres publicados con estado visual (badge coloreado)
+- Detalle: resumen semanal (horas trabajadas, extras, nocturnas) + tabla de días
+- **Confirmar:** Cambia estado a 'confirmado' + guarda timestamp
+- **Objetar:** Modal para seleccionar días + comentario (mínimo 10 caracteres)
+- Requiere conexión a internet (botones deshabilitados offline)
+
+**Problema técnico resuelto:**
+La tabla `cierres_semanales` no está en los tipos generados de Supabase. Solución:
+```typescript
+// Interfaz interna
+interface CierreRow { id: string; cedula: string; ... }
+
+// Query con type assertion
+const { data, error } = await (supabase
+  .from('cierres_semanales' as never)
+  .select('*') as unknown as Promise<{ data: CierreRow[] | null; error: Error | null }>);
+```
+
+**Gap identificado - Flujo de objeciones:**
+- Empleado puede objetar ✅
+- Admin VE la objeción ✅
+- Admin NO puede RESPONDER ❌
+- Documentado como B6 para futuro (prioridad baja)
+
+---
 
 ### 8 de Enero 2026 (Sesión 16) - Correcciones Web Admin + Arquitectura Final Horas Especiales
 

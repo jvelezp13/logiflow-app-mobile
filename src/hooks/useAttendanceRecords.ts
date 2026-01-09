@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 /**
  * Date filter options
  */
-export type DateFilter = 'today' | 'week' | 'month';
+export type DateFilter = 'today' | 'week' | 'month' | 'cierres';
 
 /**
  * Map of timestamp -> novedad info (id + estado)

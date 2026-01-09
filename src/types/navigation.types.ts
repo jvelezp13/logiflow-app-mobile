@@ -41,6 +41,7 @@ export type MainTabParamList = {
   Home: undefined;
   History: undefined;
   Novedades: undefined;
+  Cierres: undefined;
   Settings: undefined;
 };
 
@@ -57,6 +58,13 @@ export type NovedadesStackParamList = {
     tipo: 'clock_in' | 'clock_out';
     horaActual: string;
   };
+};
+
+/**
+ * Cierres Stack
+ */
+export type CierresStackParamList = {
+  DetalleCierre: { cierreId: string };
 };
 
 /**
@@ -86,6 +94,12 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
 export type NovedadesStackScreenProps<T extends keyof NovedadesStackParamList> =
   CompositeScreenProps<
     StackScreenProps<NovedadesStackParamList, T>,
+    MainTabScreenProps<keyof MainTabParamList>
+  >;
+
+export type CierresStackScreenProps<T extends keyof CierresStackParamList> =
+  CompositeScreenProps<
+    StackScreenProps<CierresStackParamList, T>,
     MainTabScreenProps<keyof MainTabParamList>
   >;
 

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '@/types/navigation.types';
 import { HomeScreen, HistoryScreen, SettingsScreen } from '@screens/main';
 import { NovedadesNavigator } from './NovedadesNavigator';
+import { CierresNavigator } from './CierresNavigator';
 import { COLORS, LAYOUT } from '@constants/theme';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -84,6 +85,16 @@ export const MainNavigator: React.FC = () => {
       <Tab.Screen
         name="Novedades"
         component={NovedadesNavigator}
+        options={{
+          headerShown: false,
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
+      {/* Hidden navigator - accessible from History for closure details */}
+      <Tab.Screen
+        name="Cierres"
+        component={CierresNavigator}
         options={{
           headerShown: false,
           tabBarButton: () => null,
