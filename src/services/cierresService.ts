@@ -186,25 +186,22 @@ class CierresService {
   }
 
   /**
-   * Sube foto y firma de confirmación a Storage
-   * Retorna URLs públicas o null si falla
+   * Sube foto de confirmación a Storage
+   * Retorna URL pública o null si falla
    */
-  async uploadCierreEvidence(
+  async uploadFotoConfirmacion(
     cierreId: string,
     cedula: string,
-    fotoBase64: string,
-    firmaBase64: string
-  ): Promise<{ fotoUrl: string; firmaUrl: string } | null> {
+    fotoBase64: string
+  ): Promise<string | null> {
     try {
       const timestamp = Date.now();
 
-      // Limpiar prefijos base64 si existen
+      // Limpiar prefijo base64 si existe
       const fotoData = fotoBase64.replace(/^data:image\/\w+;base64,/, '');
-      const firmaData = firmaBase64.replace(/^data:image\/\w+;base64,/, '');
 
       // Convertir base64 a Uint8Array
       const fotoBytes = Uint8Array.from(atob(fotoData), (c) => c.charCodeAt(0));
-      const firmaBytes = Uint8Array.from(atob(firmaData), (c) => c.charCodeAt(0));
 
       // Subir foto
       const fotoFileName = `cierres/${cedula}/${cierreId}_foto_${timestamp}.jpg`;
@@ -220,47 +217,25 @@ class CierresService {
         throw fotoError;
       }
 
-      // Subir firma
-      const firmaFileName = `cierres/${cedula}/${cierreId}_firma_${timestamp}.png`;
-      const { error: firmaError } = await supabase.storage
-        .from('attendance_photos')
-        .upload(firmaFileName, firmaBytes, {
-          contentType: 'image/png',
-          upsert: false,
-        });
-
-      if (firmaError) {
-        console.error('[CierresService] Error subiendo firma:', firmaError);
-        throw firmaError;
-      }
-
-      // Obtener URLs públicas
+      // Obtener URL pública
       const { data: fotoUrlData } = supabase.storage
         .from('attendance_photos')
         .getPublicUrl(fotoFileName);
 
-      const { data: firmaUrlData } = supabase.storage
-        .from('attendance_photos')
-        .getPublicUrl(firmaFileName);
-
-      return {
-        fotoUrl: fotoUrlData.publicUrl,
-        firmaUrl: firmaUrlData.publicUrl,
-      };
+      return fotoUrlData.publicUrl;
     } catch (error) {
-      console.error('[CierresService] Error subiendo evidencia:', error);
+      console.error('[CierresService] Error subiendo foto confirmación:', error);
       return null;
     }
   }
 
   /**
-   * Confirma un cierre semanal con evidencia (foto + firma)
+   * Confirma un cierre semanal con foto de evidencia
    * Solo se puede confirmar si el estado es 'publicado'
    */
-  async confirmarCierreConEvidencia(
+  async confirmarCierreConFoto(
     id: string,
-    fotoUrl: string,
-    firmaUrl: string
+    fotoUrl: string
   ): Promise<boolean> {
     const { error } = await (supabase
       .from('cierres_semanales' as never)
@@ -268,7 +243,6 @@ class CierresService {
         estado: 'confirmado',
         confirmado_at: new Date().toISOString(),
         foto_confirmacion_url: fotoUrl,
-        firma_confirmacion_url: firmaUrl,
       } as never)
       .eq('id', id)
       .eq('estado', 'publicado') as unknown as Promise<{
@@ -277,7 +251,7 @@ class CierresService {
       }>);
 
     if (error) {
-      console.error('[CierresService] Error confirmando cierre con evidencia:', error);
+      console.error('[CierresService] Error confirmando cierre con foto:', error);
       return false;
     }
 

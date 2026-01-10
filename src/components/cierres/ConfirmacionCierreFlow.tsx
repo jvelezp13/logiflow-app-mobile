@@ -1,7 +1,8 @@
 /**
  * ConfirmacionCierreFlow Component
  *
- * Orchestrates the confirmation flow: Selfie → Signature → Processing → Success
+ * Orchestrates the confirmation flow: Selfie → Processing → Success
+ * Simplified version without signature (B7 v2)
  */
 
 import React, { useState, useCallback } from 'react';
@@ -13,17 +14,16 @@ import {
   StyleSheet,
 } from 'react-native';
 import { CameraCapture } from '@/components/Camera/CameraCapture';
-import { SignatureCapture } from '@/components/Signature';
 import { COLORS, FONT_SIZES, SPACING } from '@/constants/theme';
 
-type FlowStep = 'idle' | 'selfie' | 'firma' | 'procesando';
+type FlowStep = 'idle' | 'selfie' | 'procesando';
 
 export type ConfirmacionCierreFlowProps = {
   visible: boolean;
   cierreId: string;
   cedula: string;
   onClose: () => void;
-  onConfirm: (fotoBase64: string, firmaBase64: string) => Promise<boolean>;
+  onConfirm: (fotoBase64: string) => Promise<boolean>;
 };
 
 export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
@@ -34,7 +34,6 @@ export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
   onConfirm,
 }) => {
   const [step, setStep] = useState<FlowStep>('idle');
-  const [selfieBase64, setSelfieBase64] = useState<string | null>(null);
 
   /**
    * Start the flow when modal becomes visible
@@ -42,51 +41,32 @@ export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
   React.useEffect(() => {
     if (visible) {
       setStep('selfie');
-      setSelfieBase64(null);
     } else {
       setStep('idle');
-      setSelfieBase64(null);
     }
   }, [visible]);
 
   /**
-   * Handle selfie captured
+   * Handle selfie captured - directly process confirmation
    */
-  const handleSelfieCapture = useCallback((_uri: string, base64: string) => {
-    setSelfieBase64(base64);
-    setStep('firma');
-  }, []);
-
-  /**
-   * Handle signature captured
-   */
-  const handleSignatureCapture = useCallback(
-    async (firmaBase64: string) => {
-      if (!selfieBase64) {
-        console.error('[ConfirmacionCierreFlow] No selfie data');
-        return;
-      }
-
+  const handleSelfieCapture = useCallback(
+    async (_uri: string, base64: string) => {
       setStep('procesando');
 
       try {
-        const success = await onConfirm(selfieBase64, firmaBase64);
+        const success = await onConfirm(base64);
 
         if (success) {
-          // Success is handled by parent
           onClose();
         } else {
-          // Error is shown by parent via Alert
           setStep('selfie');
-          setSelfieBase64(null);
         }
       } catch (error) {
         console.error('[ConfirmacionCierreFlow] Error:', error);
         setStep('selfie');
-        setSelfieBase64(null);
       }
     },
-    [selfieBase64, onConfirm, onClose]
+    [onConfirm, onClose]
   );
 
   /**
@@ -94,7 +74,6 @@ export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
    */
   const handleClose = useCallback(() => {
     setStep('idle');
-    setSelfieBase64(null);
     onClose();
   }, [onClose]);
 
@@ -111,15 +90,7 @@ export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
         title="Selfie de Confirmación"
       />
 
-      {/* Step 2: Signature */}
-      <SignatureCapture
-        visible={step === 'firma'}
-        onClose={handleClose}
-        onCapture={handleSignatureCapture}
-        title="Tu Firma"
-      />
-
-      {/* Step 3: Processing */}
+      {/* Step 2: Processing */}
       <Modal
         visible={step === 'procesando'}
         transparent
@@ -131,7 +102,7 @@ export const ConfirmacionCierreFlow: React.FC<ConfirmacionCierreFlowProps> = ({
             <ActivityIndicator size="large" color={COLORS.primary} />
             <Text style={styles.processingTitle}>Confirmando cierre...</Text>
             <Text style={styles.processingSubtitle}>
-              Subiendo foto y firma
+              Subiendo foto de confirmación
             </Text>
           </View>
         </View>

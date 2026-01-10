@@ -172,13 +172,12 @@ export const useCierres = (cedula: string | null) => {
   );
 
   /**
-   * Confirma un cierre semanal con evidencia (foto + firma)
+   * Confirma un cierre semanal con foto de evidencia
    */
-  const confirmarCierreConEvidencia = useCallback(
+  const confirmarCierreConFoto = useCallback(
     async (
       id: string,
       fotoBase64: string,
-      firmaBase64: string,
       cedulaEmpleado: string
     ): Promise<boolean> => {
       const hasConnection = await checkConnection();
@@ -190,29 +189,23 @@ export const useCierres = (cedula: string | null) => {
         return false;
       }
 
-      // 1. Subir evidencia a Storage
-      const evidenceUrls = await cierresService.uploadCierreEvidence(
+      // 1. Subir foto a Storage
+      const fotoUrl = await cierresService.uploadFotoConfirmacion(
         id,
         cedulaEmpleado,
-        fotoBase64,
-        firmaBase64
+        fotoBase64
       );
 
-      if (!evidenceUrls) {
-        Alert.alert('Error', 'No se pudo subir la evidencia. Intenta nuevamente.');
+      if (!fotoUrl) {
+        Alert.alert('Error', 'No se pudo subir la foto. Intenta nuevamente.');
         return false;
       }
 
-      // 2. Confirmar cierre con URLs
-      const success = await cierresService.confirmarCierreConEvidencia(
-        id,
-        evidenceUrls.fotoUrl,
-        evidenceUrls.firmaUrl
-      );
+      // 2. Confirmar cierre con URL
+      const success = await cierresService.confirmarCierreConFoto(id, fotoUrl);
 
       if (success) {
         await onRefresh();
-        // El alert de éxito lo maneja el componente llamador
       }
 
       return success;
@@ -237,7 +230,7 @@ export const useCierres = (cedula: string | null) => {
     onRefresh,
     obtenerCierrePorId,
     confirmarCierre,
-    confirmarCierreConEvidencia,
+    confirmarCierreConFoto,
     objetarCierre,
   };
 };

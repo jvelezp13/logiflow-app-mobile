@@ -16,10 +16,12 @@ import {
   Alert,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import CierreStatusBadge from '@/components/cierres/CierreStatusBadge';
@@ -36,7 +38,7 @@ export const DetalleCierreScreen: React.FC = () => {
   const route = useRoute<RouteParams>();
   const navigation = useNavigation();
   const { userCedula } = useAuth();
-  const { obtenerCierrePorId, confirmarCierreConEvidencia, objetarCierre } = useCierres(userCedula);
+  const { obtenerCierrePorId, confirmarCierreConFoto, objetarCierre } = useCierres(userCedula);
 
   const [cierre, setCierre] = useState<CierreSemanal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,9 +64,12 @@ export const DetalleCierreScreen: React.FC = () => {
     }
   }, [route.params.cierreId, obtenerCierrePorId]);
 
-  useEffect(() => {
-    cargarCierre();
-  }, [cargarCierre]);
+  // Reload data every time screen is focused (not just on mount)
+  useFocusEffect(
+    useCallback(() => {
+      cargarCierre();
+    }, [cargarCierre])
+  );
 
   /**
    * Format decimal hours to "8h 30m"
@@ -86,12 +91,12 @@ export const DetalleCierreScreen: React.FC = () => {
   };
 
   /**
-   * Handle confirming the closure (B7: with selfie + signature)
+   * Handle confirming the closure (B7: with selfie)
    */
   const handleConfirmar = () => {
     Alert.alert(
       'Confirmar cierre',
-      '¿Estas de acuerdo con las horas registradas para esta semana?\n\nSe te pedira una selfie y tu firma como evidencia.',
+      '¿Estas de acuerdo con las horas registradas para esta semana?\n\nSe te pedira una selfie como evidencia.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -103,21 +108,17 @@ export const DetalleCierreScreen: React.FC = () => {
   };
 
   /**
-   * Handle confirmation with evidence (B7)
+   * Handle confirmation with photo (B7)
    */
-  const handleConfirmWithEvidence = async (
-    fotoBase64: string,
-    firmaBase64: string
-  ): Promise<boolean> => {
+  const handleConfirmWithPhoto = async (fotoBase64: string): Promise<boolean> => {
     if (!userCedula) {
       Alert.alert('Error', 'No se pudo obtener la cedula del usuario.');
       return false;
     }
 
-    const success = await confirmarCierreConEvidencia(
+    const success = await confirmarCierreConFoto(
       route.params.cierreId,
       fotoBase64,
-      firmaBase64,
       userCedula
     );
 
@@ -195,12 +196,30 @@ export const DetalleCierreScreen: React.FC = () => {
   };
 
   /**
+   * Get modification badge info for a day
+   */
+  const getModificacionInfo = (observaciones: string[] | undefined) => {
+    if (!observaciones) return null;
+    if (observaciones.includes('manual')) {
+      return { icon: 'pencil-plus' as const, color: '#D97706', label: 'Manual' };
+    }
+    if (observaciones.includes('editado')) {
+      return { icon: 'pencil' as const, color: '#6B7280', label: 'Editado' };
+    }
+    if (observaciones.includes('ajustado')) {
+      return { icon: 'clock-edit-outline' as const, color: '#2563EB', label: 'Ajustado' };
+    }
+    return null;
+  };
+
+  /**
    * Render a day row
    */
   const renderDia = (dia: DiaCierre, index: number) => {
     const fechaDate = parseISO(dia.fecha);
     const isSeleccionado = diasSeleccionados.has(dia.fecha);
     const isDescanso = dia.observaciones?.includes('ausente') || dia.horas_netas === 0;
+    const modificacion = getModificacionInfo(dia.observaciones);
 
     return (
       <TouchableOpacity
@@ -216,9 +235,20 @@ export const DetalleCierreScreen: React.FC = () => {
         activeOpacity={showObjecionModal ? 0.7 : 1}
       >
         <View style={styles.diaInfo}>
-          <Text style={[styles.diaNombre, isDescanso && styles.diaDescansoText]}>
-            {dia.dia_semana}
-          </Text>
+          <View style={styles.diaNombreRow}>
+            <Text style={[styles.diaNombre, isDescanso && styles.diaDescansoText]}>
+              {dia.dia_semana}
+            </Text>
+            {modificacion && (
+              <View style={[styles.modificacionBadge, { backgroundColor: modificacion.color + '20' }]}>
+                <MaterialCommunityIcons
+                  name={modificacion.icon}
+                  size={12}
+                  color={modificacion.color}
+                />
+              </View>
+            )}
+          </View>
           <Text style={styles.diaFecha}>
             {format(fechaDate, 'd MMM', { locale: es })}
           </Text>
@@ -316,10 +346,6 @@ export const DetalleCierreScreen: React.FC = () => {
                 <Text style={styles.totalLabel}>Nocturnas</Text>
               </View>
             )}
-            <View style={styles.totalItem}>
-              <Text style={styles.totalValue}>{datos_semana.totales.dias_trabajados || 0}</Text>
-              <Text style={styles.totalLabel}>Dias</Text>
-            </View>
           </View>
         </View>
 
@@ -423,7 +449,10 @@ export const DetalleCierreScreen: React.FC = () => {
         transparent={true}
         onRequestClose={cerrarModalObjecion}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Objetar cierre</Text>
             <Text style={styles.modalSubtitle}>
@@ -468,16 +497,16 @@ export const DetalleCierreScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Confirmation Flow with Evidence (B7) */}
+      {/* Confirmation Flow with Selfie (B7) */}
       <ConfirmacionCierreFlow
         visible={showConfirmacionFlow}
         cierreId={route.params.cierreId}
         cedula={userCedula || ''}
         onClose={() => setShowConfirmacionFlow(false)}
-        onConfirm={handleConfirmWithEvidence}
+        onConfirm={handleConfirmWithPhoto}
       />
     </SafeAreaView>
   );
@@ -607,10 +636,19 @@ const styles = StyleSheet.create({
   diaInfo: {
     flex: 1.5,
   },
+  diaNombreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   diaNombre: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '500',
     color: COLORS.text,
+  },
+  modificacionBadge: {
+    padding: 2,
+    borderRadius: 4,
   },
   diaFecha: {
     fontSize: FONT_SIZES.xs,

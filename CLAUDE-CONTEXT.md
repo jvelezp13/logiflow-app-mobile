@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 9 de Enero 2026 (Sesión 18 - B7: Validación Selfie + Firma)
+**Última actualización:** 10 de Enero 2026 (Sesión 19 - Mejoras Cierres + Panel Web)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -508,45 +508,42 @@ TIMEOUT: 48h sin respuesta → estado = 'vencido' (cron existente)
 
 ---
 
-### ✅ B7: Validación Selfie + Firma en Confirmación (COMPLETADO - Sesión 18)
+### ✅ B7: Validación Selfie en Confirmación (COMPLETADO - Sesión 18)
 
-**Feature implementada:** Validación de confirmación de cierres con selfie y firma digital.
+**Feature implementada:** Validación de confirmación de cierres con selfie como evidencia.
+
+**Nota:** Inicialmente se planificó selfie + firma digital, pero la dependencia `react-native-signature-canvas` causaba problemas con WebView. Se simplificó a solo selfie para evitar complicaciones.
 
 **Cambios en BD:**
 - Migración: `add_confirmation_evidence_to_cierres`
 - Nuevas columnas en `cierres_semanales`:
   - `foto_confirmacion_url TEXT` - URL de la selfie al confirmar
-  - `firma_confirmacion_url TEXT` - URL de la firma digital al confirmar
+  - `firma_confirmacion_url TEXT` - (Reservado para futuro, no usado actualmente)
 
 **Archivos creados (App Móvil):**
 | Archivo | Propósito |
 |---------|-----------|
-| `src/components/Signature/SignatureCapture.tsx` | Modal canvas para capturar firma con el dedo |
-| `src/components/Signature/SignatureCapture.styles.ts` | Estilos del modal de firma |
-| `src/components/Signature/index.ts` | Exports del componente |
-| `src/components/cierres/ConfirmacionCierreFlow.tsx` | Orquestador del flujo (selfie→firma→upload) |
+| `src/components/cierres/ConfirmacionCierreFlow.tsx` | Orquestador del flujo (selfie→procesando→éxito) |
 
 **Archivos modificados (App Móvil):**
 | Archivo | Cambio |
 |---------|--------|
-| `src/types/cierres.types.ts` | Campos `foto_confirmacion_url`, `firma_confirmacion_url` |
-| `src/services/cierresService.ts` | Métodos `uploadCierreEvidence()`, `confirmarCierreConEvidencia()` |
-| `src/hooks/useCierres.ts` | Método `confirmarCierreConEvidencia()` |
+| `src/types/cierres.types.ts` | Campo `foto_confirmacion_url` |
+| `src/services/cierresService.ts` | Métodos `uploadFotoConfirmacion()`, `confirmarCierreConFoto()` |
+| `src/hooks/useCierres.ts` | Método `confirmarCierreConFoto()` |
 | `src/screens/cierres/DetalleCierreScreen.tsx` | Integración del flujo de confirmación |
 
 **Flujo implementado:**
 ```
 Usuario presiona "Confirmar"
     ↓
-Alert: "Se te pedirá selfie y firma"
+Alert: "Se te pedirá selfie como evidencia"
     ↓
 Modal CameraCapture (selfie)
     ↓
-Modal SignatureCapture (firma con el dedo)
+Procesando: sube foto a Storage
     ↓
-Procesando: sube foto + firma a Storage
-    ↓
-UPDATE cierres_semanales con URLs + estado + timestamp
+UPDATE cierres_semanales con URL + estado + timestamp
     ↓
 Éxito: navega atrás
 ```
@@ -554,9 +551,6 @@ UPDATE cierres_semanales con URLs + estado + timestamp
 **Storage:**
 - Bucket: `attendance_photos` (reutilizado)
 - Ruta: `cierres/{cedula}/{cierre_id}_foto_{timestamp}.jpg`
-- Ruta: `cierres/{cedula}/{cierre_id}_firma_{timestamp}.png`
-
-**Dependencia nueva:** `react-native-signature-canvas`
 
 ---
 
@@ -601,6 +595,62 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 10 de Enero 2026 (Sesión 19) - Mejoras UX Cierres + Panel Web
+
+**Mejoras en App Móvil:**
+
+1. **Fix KeyboardAvoidingView en modal de objeción:**
+   - Problema: Al objetar un cierre, el teclado tapaba el campo de comentario
+   - Solución: Envolver contenido del modal con `KeyboardAvoidingView`
+   - Archivo: `src/screens/cierres/DetalleCierreScreen.tsx`
+   ```typescript
+   <Modal>
+     <KeyboardAvoidingView
+       style={styles.modalOverlay}
+       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+     >
+       <View style={styles.modalContent}>...</View>
+     </KeyboardAvoidingView>
+   </Modal>
+   ```
+
+2. **Estilos para badges de modificación en días:**
+   - `diaNombreRow`: Flexbox row para nombre del día + badge
+   - `modificacionBadge`: Padding y border-radius para los íconos
+
+**Mejoras en Web Admin:**
+
+1. **Regeneración de datos al responder objeciones:**
+   - Nueva función `regenerarDatosCierre()` que recalcula `datos_semana` con marcajes actuales
+   - El admin puede editar marcajes y al republicar, los datos reflejan los cambios
+   - Checkbox "Actualizar datos con marcajes corregidos" (activado por defecto)
+   - Archivo: `estado-cierres-panel.tsx`
+
+2. **Visualización de foto de confirmación:**
+   - Cuando un cierre está confirmado y tiene `foto_confirmacion_url`, se muestra en el modal
+   - Thumbnail clicable que abre la imagen completa
+   - Incluye timestamp de confirmación
+   - Archivo: `estado-cierres-panel.tsx`
+
+3. **Tipo CierreSemanal actualizado:**
+   - Agregado campo `foto_confirmacion_url` al tipo
+   - Archivo: `cierres-client.tsx`
+
+**Archivos modificados:**
+| Proyecto | Archivo | Cambio |
+|----------|---------|--------|
+| Mobile | `DetalleCierreScreen.tsx` | KeyboardAvoidingView + estilos |
+| Web Admin | `estado-cierres-panel.tsx` | regenerarDatosCierre + foto display |
+| Web Admin | `cierres-client.tsx` | tipo actualizado |
+
+---
+
+### 9 de Enero 2026 (Sesión 18) - B7: Validación Selfie en Confirmación
+
+(Ver sección B7 en Pendientes Conocidos para detalles completos)
+
+---
 
 ### 9 de Enero 2026 (Sesión 17) - B5 + B6: Cierres Semanales Completo
 
