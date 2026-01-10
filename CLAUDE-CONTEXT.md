@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 10 de Enero 2026 (Sesión 19 - Mejoras Cierres + Panel Web)
+**Última actualización:** 10 de Enero 2026 (Sesión 19 - Mejoras Cierres + Auditoría BD)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -178,9 +178,7 @@ La Web Admin agregó soporte para **horas especiales**:
 
 | Tabla | Propósito |
 |-------|-----------|
-| `horarios_alertas_gestion` | Alertas automáticas para admin |
-| `horarios_cierres_semanales` | Cierres generados por semana |
-| `horarios_cierres_detalle` | Detalle por empleado/día de cada cierre |
+| `cierres_semanales` | Cierres generados por semana (también usada por App para ver/confirmar) |
 
 ---
 
@@ -272,7 +270,7 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 7. **Sin marcaje de pausas:** Los empleados NO marcan pausas/almuerzo. El descanso se pre-configura por rol (ej: vendedor=60min) y se resta automáticamente al calcular horas trabajadas. Esto evita olvidos y simplifica el flujo.
 
-8. **Configuración por rol + excepciones:** Los límites de jornada (max horas, horario permitido, descanso) se configuran por rol. Si un empleado específico necesita algo diferente, se crea excepción por cédula.
+8. **Configuración por rol:** Los límites de jornada (max horas, horario permitido, descanso) se configuran por rol en la tabla `configuracion`.
 
 9. **Ajuste de marcaje simplificado:** Las "novedades" ahora son solo solicitudes de ajuste de marcaje. El empleado selecciona un marcaje desde el Historial, indica la hora correcta y el motivo. El admin aprueba/rechaza desde Web Admin.
 
@@ -643,6 +641,23 @@ CREATE TABLE configuracion_jornadas_rol (
 | Mobile | `DetalleCierreScreen.tsx` | KeyboardAvoidingView + estilos |
 | Web Admin | `estado-cierres-panel.tsx` | regenerarDatosCierre + foto display |
 | Web Admin | `cierres-client.tsx` | tipo actualizado |
+
+**Auditoría de Base de Datos:**
+
+Limpieza completa de tablas Supabase:
+
+| Tabla | Cambio |
+|-------|--------|
+| `cierres_semanales` | Eliminadas 3 columnas: `publicado_por`, `confirmacion_foto_url`, `firma_confirmacion_url` |
+| `horarios_alertas_gestion` | **Tabla eliminada** (no se usaba) |
+| `horarios_novedades` | Eliminadas 2 columnas: `created_by`, `updated_by` |
+| `user_roles` | Eliminada 1 columna: `assigned_by` |
+| `configuracion` | ✅ Limpia (12 cols, todas usadas) |
+| `horarios_registros_diarios` | ✅ Limpia (23 cols, todas usadas) |
+| `profiles` | ✅ Limpia (10 cols, todas usadas) |
+
+**Bug corregido:**
+- `objetarCierre()` ahora incluye `objecion_at` al objetar un cierre
 
 ---
 
