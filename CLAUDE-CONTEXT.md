@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 10 de Enero 2026 (Sesión 20 - Optimización para Equipos de Baja Capacidad)
+**Última actualización:** 10 de Enero 2026 (Sesión 20 - Mejoras Sistema Horas Especiales)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -281,12 +281,16 @@ npx tsc --noEmit             # Verificar errores de tipos
     - Cierres: Limitado a **4 registros** más recientes (antes sin límite)
     - Optimizado para celulares Android de baja gama
 
-12. **Sistema de Horas Especiales (Web Admin - Sesión 16):**
-    - La Web Admin detecta automáticamente cuando un empleado excede `max_horas_dia` o trabaja en horario nocturno (19:00-06:00)
-    - Crea novedades tipo `horas_extra` o `horas_nocturnas` con estado `pendiente`
+12. **Sistema de Horas Especiales (Web Admin - Sesiones 16, 20):**
+    - La Web Admin detecta automáticamente cuando un empleado:
+      - Excede `max_horas_dia` en un día → crea `horas_extra`
+      - Trabaja en horario nocturno (19:00-06:00) → crea `horas_nocturnas`
+      - Excede `max_horas_semana` al generar cierre → crea `horas_extra_semanal` (Sesión 20)
     - El admin las aprueba/rechaza desde Novedades
     - Solo las horas **aprobadas** se contabilizan en cierres semanales
-    - **App Móvil debe**: Mostrar warning al marcar salida si se detectan horas especiales
+    - **Sincronización automática (Sesión 20):** Al editar/crear/eliminar marcajes, las novedades se recalculan automáticamente
+    - **Bloqueo de publicación (Sesión 20):** No se pueden publicar cierres con novedades pendientes
+    - **App Móvil**: Muestra warning al marcar salida si se detectan horas especiales
 
 ---
 
@@ -599,9 +603,64 @@ CREATE TABLE configuracion_jornadas_rol (
 
 ## Historial de Sesiones
 
-### 10 de Enero 2026 (Sesión 20) - Optimización para Equipos de Baja Capacidad
+### 10 de Enero 2026 (Sesión 20) - Mejoras Sistema Horas Especiales + Optimización
 
-**Cambios implementados:**
+**Contexto:** El sistema de horas especiales tenía problemas de consistencia y faltaban funcionalidades clave.
+
+#### Parte 1: Mejoras Sistema Horas Especiales (Web Admin)
+
+**Problema identificado:** Las novedades de horas especiales quedaban "huérfanas" cuando se editaba un marcaje. Ejemplo: si un empleado salió a las 6pm (2h extra) y el admin lo corrige a 2pm, la novedad de 2h extra quedaba sin actualizar.
+
+**Archivos modificados en Web Admin:**
+- `src/app/(dashboard)/marcajes/actions.ts`
+- `src/app/(dashboard)/cierres/components/generar-cierres-panel.tsx`
+
+**FASE 1: Sincronización automática de novedades**
+
+Nueva función `sincronizarNovedadesHorasEspeciales()` que:
+- Se ejecuta automáticamente al editar/crear/eliminar marcajes
+- Recalcula horas_extra y horas_nocturnas del día
+- Si hay novedad pendiente y cantidad cambió → actualiza cantidad
+- Si hay novedad pendiente y cantidad = 0 → soft delete
+- Si novedad ya aprobada/rechazada → no toca (decisión ya fue tomada)
+
+Integrado en:
+- `editarMarcaje()` - al editar hora_inicio/hora_fin
+- `crearMarcajeManual()` - al crear marcaje desde admin
+- `eliminarMarcaje()` - al eliminar un marcaje
+
+**FASE 2: Detección de horas_extra_semanal**
+
+Nuevo tipo de novedad para cuando el total semanal excede `max_horas_semana`:
+- Tipo: `horas_extra_semanal` (diferente a `horas_extra` que es diaria)
+- Se calcula solo al generar cierre (necesita semana completa)
+- Formula: `horasExtraSemanal = max(0, horasTrabajadas - configGlobal.max_horas_semana)`
+
+Función `crearNovedadesSemanales()`:
+- Crea novedades tipo `horas_extra_semanal` automáticamente
+- Se ejecuta al guardar borrador O publicar cierre
+- Valida si ya existe novedad para evitar duplicados
+
+**FASE 3: Bloqueo de publicación con novedades pendientes**
+
+El sistema ahora **bloquea** la publicación de cierres si hay novedades pendientes:
+- Nuevo `useMemo`: `tieneNovedadesPendientes` que verifica todos los empleados
+- Botón "Publicar" deshabilitado si hay pendientes
+- Alerta global al inicio de vista previa explicando el bloqueo
+- Alerta individual por empleado con novedades pendientes
+- Guardar borrador SÍ permitido (para no perder trabajo)
+
+**FASE 4: Mensajes claros para horas rechazadas**
+
+Cambios de terminología:
+- "rechazadas" → "sin autorización del líder"
+- Nueva alerta informativa explicando que horas rechazadas no cuentan en cierre
+
+**Visualización de horas_extra_semanal:**
+- Nuevo bloque en totales con color naranja (diferente al ámbar de diarias)
+- Muestra aprobadas/pendientes/sin autorización como las demás
+
+#### Parte 2: Optimización para Equipos de Baja Capacidad
 
 1. **Reducción de pull de marcajes:** 90 días → **30 días**
    - Coincide con filtro UI "Mes" (no tiene sentido traer más)
