@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 10 de Enero 2026 (Sesión 20 - Mejoras Sistema Horas Especiales)
+**Última actualización:** 10 de Enero 2026 (Sesión 21 - Correcciones Reportes Web Admin)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -602,6 +602,57 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 10 de Enero 2026 (Sesión 21) - Correcciones Reportes Web Admin
+
+**Contexto:** Sesión enfocada en Web Admin Next.js - correcciones de cálculos y reorganización de reportes.
+
+**Problema 1: Discrepancia de horas entre Reportes y Horas-semana**
+- Los componentes de Reportes usaban `configGlobal.minutos_descanso` para TODOS los empleados
+- La página Horas-semana usaba correctamente el descanso por rol (`configRol?.minutos_descanso`)
+- Esto causaba cálculos diferentes entre las dos páginas
+
+**Archivos corregidos en Web Admin:**
+| Archivo | Cambio |
+|---------|--------|
+| `reportes-client.tsx` | Añadido `minutos_descanso` a ConfigRol type y query |
+| `reporte-resumen-semanal.tsx` | Helper `getMinutosDescanso(rol)` por empleado |
+| `reporte-roles.tsx` | Mapa `minutosDescansoPorRol` |
+| `reporte-tendencias.tsx` | Helper `getMinutosDescanso(rol)` |
+| `reporte-horas-extra.tsx` | Helper `getMinutosDescanso(rol)` |
+
+**Problema 2: Reorganización de Reportes**
+- Tab "Resumen" era redundante con página "Horas semana"
+- Tab "Horas Extra" solo mostraba `horas_extra` diarias
+
+**Solución implementada:**
+- Eliminado tab "Resumen" (redundante)
+- Creado nuevo componente `ReporteNovedadesHoras` unificado con:
+  - **Extras Diarias** (`horas_extra`) - Exceso sobre max_horas_dia
+  - **Exceso Semanal** (`horas_extra_semanal`) - Exceso sobre max_horas_semana
+  - **Nocturnas** (`horas_nocturnas`) - Horas en horario nocturno
+- Selector de segmentos para cambiar entre tipos
+- Totales por estado (aprobadas/pendientes/rechazadas)
+- Columna de motivo visible
+
+**Problema 3: Compatibilidad Safari**
+- Los tabs no se mostraban correctamente en Safari
+- Causa: `TabsList` tiene `inline-flex w-fit` por defecto, conflictúa con `grid`
+- Fix: Usar `!grid !w-full` para forzar override con `!important`
+
+**Problema 4: Formato decimal en motivos de novedades**
+- El trigger SQL generaba motivos con formato "1.0 horas extra"
+- Creada función SQL `format_horas_minutos()` para formato "Xh Ym"
+- Actualizado trigger `trigger_detectar_horas_especiales` para usar nuevo formato
+
+**Tabs finales en Reportes (5):**
+1. Novedades - Horas especiales unificadas
+2. Puntualidad - Análisis de llegadas tarde
+3. Ausencias - Días sin marcaje
+4. Por Rol - Comparativo agregado
+5. Tendencias - Gráficos del periodo
+
+---
 
 ### 10 de Enero 2026 (Sesión 20) - Mejoras Sistema Horas Especiales + Optimización
 
