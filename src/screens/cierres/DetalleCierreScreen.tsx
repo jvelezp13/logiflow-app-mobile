@@ -335,7 +335,15 @@ export const DetalleCierreScreen: React.FC = () => {
                 <Text style={[styles.totalValue, styles.totalExtra]}>
                   {formatHoras(datos_semana.totales.horas_extra)}
                 </Text>
-                <Text style={styles.totalLabel}>Extras</Text>
+                <Text style={styles.totalLabel}>Extra diarias</Text>
+              </View>
+            )}
+            {(datos_semana.totales.horas_extra_semanal ?? 0) > 0 && (
+              <View style={styles.totalItem}>
+                <Text style={[styles.totalValue, styles.totalExtraSemanal]}>
+                  {formatHoras(datos_semana.totales.horas_extra_semanal)}
+                </Text>
+                <Text style={styles.totalLabel}>Extra semanal</Text>
               </View>
             )}
             {datos_semana.totales.horas_nocturnas > 0 && (
@@ -602,6 +610,9 @@ const styles = StyleSheet.create({
   },
   totalExtra: {
     color: COLORS.success,
+  },
+  totalExtraSemanal: {
+    color: '#EA580C', // Orange for weekly extra hours
   },
   totalLabel: {
     fontSize: FONT_SIZES.xs,

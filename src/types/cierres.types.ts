@@ -30,15 +30,21 @@ export interface DiaCierre {
 export interface TotalesCierre {
   horas_trabajadas: number;
   horas_ordinarias: number;
-  horas_extra: number;
+  horas_extra: number; // Exceso diario (> max_horas_dia)
+  horas_extra_semanal: number; // Exceso semanal (total > max_horas_semana)
   horas_nocturnas: number;
   novedades_aplicadas: number;
   dias_ausente: number;
   dias_trabajados: number;
-  // Estado de aprobación de horas especiales
+  // Estado de aprobación de horas extra diarias
   horas_extra_aprobadas: number;
   horas_extra_pendientes: number;
   horas_extra_rechazadas: number;
+  // Estado de aprobación de horas extra semanales
+  horas_extra_semanal_aprobadas: number;
+  horas_extra_semanal_pendientes: number;
+  horas_extra_semanal_rechazadas: number;
+  // Estado de aprobación de horas nocturnas
   horas_nocturnas_aprobadas: number;
   horas_nocturnas_pendientes: number;
   horas_nocturnas_rechazadas: number;
