@@ -66,7 +66,8 @@ class CierresService {
       `)
       .eq('cedula', cedula)
       .neq('estado', 'borrador')
-      .order('semana_inicio', { ascending: false }) as unknown as Promise<{
+      .order('semana_inicio', { ascending: false })
+      .limit(4) as unknown as Promise<{
         data: CierreRow[] | null;
         error: Error | null;
       }>);

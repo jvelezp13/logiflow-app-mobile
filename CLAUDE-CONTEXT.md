@@ -1,6 +1,6 @@
 # LogiFlow Marcaje - Contexto para Claude
 
-**Última actualización:** 10 de Enero 2026 (Sesión 19 - Mejoras Cierres + Auditoría BD)
+**Última actualización:** 10 de Enero 2026 (Sesión 20 - Optimización para Equipos de Baja Capacidad)
 **Proyecto:** App móvil React Native para registro de asistencia
 
 ---
@@ -266,7 +266,7 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 5. **Solo datos crudos en DB:** La tabla `horarios_registros_diarios` solo almacena datos crudos del marcaje. Los cálculos (horas trabajadas, extras, etc.) se hacen en reportes/Web Admin, no en la app móvil.
 
-6. **Pull de historial optimizado:** Al abrir Historial, se hace pull de Supabase (una sola vez por sesión) para traer registros de otros dispositivos. Limitado a últimos 90 días y campos mínimos para eficiencia en equipos antiguos.
+6. **Pull de historial optimizado:** Al abrir Historial, se hace pull de Supabase (una sola vez por sesión) para traer registros de otros dispositivos. Limitado a últimos **30 días** (coincide con filtro UI de "Mes") y campos mínimos. Incluye limpieza automática de registros locales antiguos ya sincronizados.
 
 7. **Sin marcaje de pausas:** Los empleados NO marcan pausas/almuerzo. El descanso se pre-configura por rol (ej: vendedor=60min) y se resta automáticamente al calcular horas trabajadas. Esto evita olvidos y simplifica el flujo.
 
@@ -276,7 +276,12 @@ npx tsc --noEmit             # Verificar errores de tipos
 
 10. **Efecto de aprobación de ajuste:** El Web Admin implementó que al aprobar un ajuste se actualiza `ajustado_por_novedad_id` en el registro original para trazabilidad.
 
-11. **Sistema de Horas Especiales (Web Admin - Sesión 16):**
+11. **Límites para equipos de baja capacidad (Sesión 20):**
+    - Marcajes: Pull limitado a **30 días** (antes 90), limpieza automática de registros locales > 30 días
+    - Cierres: Limitado a **4 registros** más recientes (antes sin límite)
+    - Optimizado para celulares Android de baja gama
+
+12. **Sistema de Horas Especiales (Web Admin - Sesión 16):**
     - La Web Admin detecta automáticamente cuando un empleado excede `max_horas_dia` o trabaja en horario nocturno (19:00-06:00)
     - Crea novedades tipo `horas_extra` o `horas_nocturnas` con estado `pendiente`
     - El admin las aprueba/rechaza desde Novedades
@@ -593,6 +598,33 @@ CREATE TABLE configuracion_jornadas_rol (
 ---
 
 ## Historial de Sesiones
+
+### 10 de Enero 2026 (Sesión 20) - Optimización para Equipos de Baja Capacidad
+
+**Cambios implementados:**
+
+1. **Reducción de pull de marcajes:** 90 días → **30 días**
+   - Coincide con filtro UI "Mes" (no tiene sentido traer más)
+   - Archivo: `src/services/sync/sync.service.ts`
+
+2. **Límite de cierres:** Sin límite → **4 registros**
+   - Suficiente para revisión reciente sin sobrecargar memoria
+   - Archivo: `src/services/cierresService.ts`
+
+3. **Limpieza automática de BD local:**
+   - Nuevo método `cleanupOldRecords()` en `attendanceRecord.service.ts`
+   - Se ejecuta automáticamente después de cada pull exitoso
+   - Solo borra registros ya sincronizados (nunca pendientes)
+   - Mantiene BD local con máximo ~60 registros
+
+**Impacto en memoria:**
+| Antes | Después |
+|-------|---------|
+| ~360 marcajes acumulados | ~60 marcajes máx |
+| Cierres ilimitados | 4 cierres máx |
+| ~500KB+ en 6 meses | ~100KB máx |
+
+---
 
 ### 10 de Enero 2026 (Sesión 19) - Mejoras UX Cierres + Panel Web
 

@@ -607,4 +607,42 @@ export const attendanceRecordService = {
       return false;
     }
   },
+
+  /**
+   * Cleanup old synced records to keep local DB light
+   * Only deletes records that are already synced (not pending)
+   * Optimized for low-capacity devices
+   */
+  async cleanupOldRecords(retentionDays: number = 30): Promise<number> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      const cutoffDateStr = cutoffDate.toISOString().split('T')[0]; // yyyy-MM-dd
+
+      // Find old synced records (not pending sync)
+      const oldRecords = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.where('date', Q.lt(cutoffDateStr)),
+          Q.where('sync_status', 'synced')
+        )
+        .fetch();
+
+      if (oldRecords.length === 0) {
+        return 0;
+      }
+
+      console.log(`[AttendanceRecordService] Cleaning up ${oldRecords.length} old synced records`);
+
+      await database.write(async () => {
+        await Promise.all(oldRecords.map((record) => record.markAsDeleted()));
+      });
+
+      console.log(`[AttendanceRecordService] Cleanup complete: ${oldRecords.length} records removed`);
+      return oldRecords.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Cleanup error:', error);
+      return 0;
+    }
+  },
 };

@@ -56,6 +56,7 @@ export type PullResult = {
   pulled: number;
   updated?: number; // Records updated from admin edits
   deleted?: number; // Records deleted (synced from Web Admin deletion)
+  cleaned?: number; // Old local records cleaned up
   alreadyLocal: number;
   error?: string;
 };
@@ -663,10 +664,10 @@ export const syncService = {
         ajustado_at: string | null;
       };
 
-      // Calculate 90 days ago
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const minDate = ninetyDaysAgo.toISOString().split('T')[0]; // yyyy-MM-dd
+      // Calculate 30 days ago (matches UI month filter, optimized for low-capacity devices)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const minDate = thirtyDaysAgo.toISOString().split('T')[0]; // yyyy-MM-dd
 
       const { data: remoteRecords, error: queryError } = await supabase
         .from('horarios_registros_diarios')
@@ -820,11 +821,18 @@ export const syncService = {
 
       console.log(`[SyncService] Pull complete: ${pulled} new, ${updated} updated, ${deleted} deleted`);
 
+      // Cleanup old synced records to keep local DB light (optimized for low-capacity devices)
+      const cleaned = await attendanceRecordService.cleanupOldRecords(30);
+      if (cleaned > 0) {
+        console.log(`[SyncService] Cleaned up ${cleaned} old local records`);
+      }
+
       return {
         success: true,
         pulled,
         updated: updated > 0 ? updated : undefined,
         deleted: deleted > 0 ? deleted : undefined,
+        cleaned: cleaned > 0 ? cleaned : undefined,
         alreadyLocal: remoteRecords.length - newRecords.length - updatedRecords.length,
       };
     } catch (error) {
