@@ -1,5 +1,9 @@
 module.exports = function (api) {
   api.cache(true);
+
+  // Determinar si estamos en produccion
+  const isProduction = process.env.EXPO_PUBLIC_ENV === 'production';
+
   return {
     presets: ['babel-preset-expo'],
     plugins: [
@@ -32,6 +36,11 @@ module.exports = function (api) {
           allowUndefined: true,
         },
       ],
+      // Eliminar console.log en produccion (mejora rendimiento)
+      // Mantiene console.warn y console.error para debugging
+      ...(isProduction
+        ? [['transform-remove-console', { exclude: ['error', 'warn'] }]]
+        : []),
       'react-native-reanimated/plugin', // Reanimated plugin has to be listed last
     ],
   };

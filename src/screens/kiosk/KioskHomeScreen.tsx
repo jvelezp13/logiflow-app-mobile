@@ -15,6 +15,15 @@ import {
   Modal,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuthStore } from '@/store/authStore';
+import { useLocation } from '@hooks/useLocation';
+import { attendanceService } from '@services/attendance';
+import { CameraCapture } from '@components/Camera/CameraCapture';
+import { LocationStatusBanner } from '@components/LocationStatusBanner';
+import { Button } from '@components/ui/Button';
+import type { AttendanceType } from '@services/storage';
+import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 
 /**
  * Memoized Clock Component
@@ -74,15 +83,6 @@ const clockStyles = StyleSheet.create({
     textTransform: 'capitalize',
   },
 });
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/store/authStore';
-import { useLocation } from '@hooks/useLocation';
-import { attendanceService } from '@services/attendance';
-import { CameraCapture } from '@components/Camera/CameraCapture';
-import { LocationStatusBanner } from '@components/LocationStatusBanner';
-import { Button } from '@components/ui/Button';
-import type { AttendanceType } from '@services/storage';
-import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 
 const AUTO_LOGOUT_DELAY = 3000; // 3 seconds
 

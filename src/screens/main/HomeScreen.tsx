@@ -4,7 +4,7 @@
  * Main screen for attendance clock in/out functionality.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,66 @@ import {
 } from '@services/configuracion.service';
 import type { AttendanceRecord, AttendanceType } from '@services/storage';
 import { styles } from './HomeScreen.styles';
+import { COLORS } from '@/constants/theme';
+
+/**
+ * Memoized Clock Component
+ * Updates independently every second without causing parent re-renders.
+ * OPTIMIZATION: Extracted to prevent full screen re-render each second.
+ */
+const ClockDisplay = memo(() => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  return (
+    <View style={clockStyles.container}>
+      <Text style={clockStyles.time}>{formatTime(currentTime)}</Text>
+      <Text style={clockStyles.date}>{formatDate(currentTime)}</Text>
+    </View>
+  );
+});
+
+const clockStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  time: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  date: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    textTransform: 'capitalize',
+  },
+});
 
 export const HomeScreen: React.FC = () => {
   const { user, userFullName } = useAuth();
@@ -44,8 +104,7 @@ export const HomeScreen: React.FC = () => {
     checkServicesStatus,
   } = useLocation();
 
-  // State
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // State (currentTime moved to ClockDisplay component for optimization)
   const [showCamera, setShowCamera] = useState(false);
   const [selectedType, setSelectedType] = useState<AttendanceType | null>(null);
   const [canClockIn, setCanClockIn] = useState(true);
@@ -67,16 +126,7 @@ export const HomeScreen: React.FC = () => {
     base64: string;
   } | null>(null);
 
-  /**
-   * Update clock every second
-   */
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Clock is now handled by ClockDisplay component (memoized)
 
   /**
    * Load initial data when user is available
@@ -385,36 +435,15 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  /**
-   * Format time (12-hour format with AM/PM)
-   */
-  const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('es-CO', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
-  };
-
-  /**
-   * Format date
-   */
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  // formatTime and formatDate moved to ClockDisplay component
 
   /**
    * Calculate worked hours from today's records
    * Pairs each clock_in with its corresponding clock_out
    * If currently clocked in (no clock_out), calculates time until now
+   * OPTIMIZATION: Memoized to avoid recalculation on every render
    */
-  const calculateWorkedHours = (): { hours: number; isInProgress: boolean } => {
+  const calculateWorkedHours = useCallback((): { hours: number; isInProgress: boolean } => {
     if (todayRecords.length === 0) {
       return { hours: 0, isInProgress: false };
     }
@@ -444,7 +473,7 @@ export const HomeScreen: React.FC = () => {
     }
 
     return { hours: Math.max(0, totalHours), isInProgress };
-  };
+  }, [todayRecords]);
 
   /**
    * Format hours as HH:MM
@@ -484,11 +513,8 @@ export const HomeScreen: React.FC = () => {
 
         {/* Clock Section */}
         <View style={styles.clockSection}>
-          {/* Current Time */}
-          <View style={styles.clockTime}>
-            <Text style={styles.currentTime}>{formatTime(currentTime)}</Text>
-            <Text style={styles.currentDate}>{formatDate(currentTime)}</Text>
-          </View>
+          {/* Current Time - Memoized component */}
+          <ClockDisplay />
 
           {/* Worked Hours Summary - only show if there are records */}
           {todayRecords.length > 0 && (() => {

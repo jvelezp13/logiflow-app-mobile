@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -11,7 +11,11 @@ interface NovedadCardProps {
   onPress: () => void;
 }
 
-const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
+/**
+ * NovedadCard Component
+ * OPTIMIZATION: Memoized to prevent unnecessary re-renders in lists
+ */
+const NovedadCard: React.FC<NovedadCardProps> = memo(({ novedad, onPress }) => {
   const truncateText = (text: string, maxLength: number = 80): string => {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
@@ -72,7 +76,7 @@ const NovedadCard: React.FC<NovedadCardProps> = ({ novedad, onPress }) => {
       )}
     </TouchableOpacity>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {

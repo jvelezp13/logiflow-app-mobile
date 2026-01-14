@@ -5,7 +5,7 @@
  * Shows days, totals, and allows confirming or objecting.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,146 @@ import type { CierresStackParamList } from '@/types/navigation.types';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '@/constants/theme';
 
 type RouteParams = RouteProp<CierresStackParamList, 'DetalleCierre'>;
+
+/**
+ * Format decimal hours to "8h 30m"
+ */
+const formatHoras = (horas: number): string => {
+  const h = Math.floor(horas);
+  const m = Math.round((horas - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
+/**
+ * Format decimal time to "h:mm AM/PM"
+ */
+const formatTime = (decimalTime: number | null): string => {
+  if (decimalTime === null) return '--:--';
+  const hours = Math.floor(decimalTime);
+  const minutes = Math.round((decimalTime - hours) * 60);
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+};
+
+/**
+ * Get modification badge info for a day
+ */
+const getModificacionInfo = (observaciones: string[] | undefined) => {
+  if (!observaciones) return null;
+  if (observaciones.includes('manual')) {
+    return { icon: 'pencil-plus' as const, color: '#D97706', label: 'Manual' };
+  }
+  if (observaciones.includes('editado')) {
+    return { icon: 'pencil' as const, color: '#6B7280', label: 'Editado' };
+  }
+  if (observaciones.includes('ajustado')) {
+    return { icon: 'clock-edit-outline' as const, color: '#2563EB', label: 'Ajustado' };
+  }
+  return null;
+};
+
+/**
+ * Memoized component for approval row
+ * OPTIMIZATION: Prevents re-render when parent updates
+ */
+const AprobacionRow = memo(({
+  tipo,
+  aprobadas,
+  rechazadas,
+}: {
+  tipo: string;
+  aprobadas: number;
+  rechazadas: number;
+}) => (
+  <View style={styles.aprobacionRow}>
+    <Text style={styles.aprobacionTipo}>{tipo}</Text>
+    <View style={styles.aprobacionBadges}>
+      {aprobadas > 0 && (
+        <View style={[styles.badge, styles.badgeAprobada]}>
+          <Text style={styles.badgeTextAprobada}>✓ {formatHoras(aprobadas)}</Text>
+        </View>
+      )}
+      {rechazadas > 0 && (
+        <View style={[styles.badge, styles.badgeRechazada]}>
+          <Text style={styles.badgeTextRechazada}>✗ {formatHoras(rechazadas)}</Text>
+        </View>
+      )}
+    </View>
+  </View>
+));
+
+/**
+ * Memoized component for day row
+ * OPTIMIZATION: Prevents re-render of all 7 days when only one changes
+ */
+const DiaCierreRow = memo(({
+  dia,
+  index,
+  isSeleccionado,
+  showObjecionModal,
+  onToggle,
+}: {
+  dia: DiaCierre;
+  index: number;
+  isSeleccionado: boolean;
+  showObjecionModal: boolean;
+  onToggle: (fecha: string) => void;
+}) => {
+  const fechaDate = parseISO(dia.fecha);
+  const isDescanso = dia.observaciones?.includes('ausente') || dia.horas_netas === 0;
+  const modificacion = getModificacionInfo(dia.observaciones);
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.diaRow,
+        index % 2 === 0 && styles.diaRowAlt,
+        isDescanso && styles.diaDescanso,
+        showObjecionModal && isSeleccionado && styles.diaSeleccionado,
+      ]}
+      onPress={() => showObjecionModal && onToggle(dia.fecha)}
+      disabled={!showObjecionModal}
+      activeOpacity={showObjecionModal ? 0.7 : 1}
+    >
+      <View style={styles.diaInfo}>
+        <View style={styles.diaNombreRow}>
+          <Text style={[styles.diaNombre, isDescanso && styles.diaDescansoText]}>
+            {dia.dia_semana}
+          </Text>
+          {modificacion && (
+            <View style={[styles.modificacionBadge, { backgroundColor: modificacion.color + '20' }]}>
+              <MaterialCommunityIcons
+                name={modificacion.icon}
+                size={12}
+                color={modificacion.color}
+              />
+            </View>
+          )}
+        </View>
+        <Text style={styles.diaFecha}>
+          {format(fechaDate, 'd MMM', { locale: es })}
+        </Text>
+      </View>
+      <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
+        {formatTime(dia.entrada)}
+      </Text>
+      <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
+        {formatTime(dia.salida)}
+      </Text>
+      <Text style={[styles.diaTotal, isDescanso && styles.diaDescansoText]}>
+        {formatHoras(dia.horas_netas)}
+      </Text>
+      {showObjecionModal && (
+        <MaterialCommunityIcons
+          name={isSeleccionado ? 'checkbox-marked' : 'checkbox-blank-outline'}
+          size={24}
+          color={isSeleccionado ? COLORS.error : COLORS.textSecondary}
+        />
+      )}
+    </TouchableOpacity>
+  );
+});
 
 export const DetalleCierreScreen: React.FC = () => {
   const route = useRoute<RouteParams>();
@@ -126,26 +266,7 @@ export const DetalleCierreScreen: React.FC = () => {
     }, [cargarCierre])
   );
 
-  /**
-   * Format decimal hours to "8h 30m"
-   */
-  const formatHoras = (horas: number): string => {
-    const h = Math.floor(horas);
-    const m = Math.round((horas - h) * 60);
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  };
-
-  /**
-   * Format decimal time to "h:mm AM/PM"
-   */
-  const formatTime = (decimalTime: number | null): string => {
-    if (decimalTime === null) return '--:--';
-    const hours = Math.floor(decimalTime);
-    const minutes = Math.round((decimalTime - hours) * 60);
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const hour12 = hours % 12 || 12;
-    return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-  };
+  // formatHoras, formatTime, and getModificacionInfo moved outside component for optimization
 
   /**
    * Handle confirming the closure (B7: with selfie)
@@ -252,83 +373,7 @@ export const DetalleCierreScreen: React.FC = () => {
     setComentarioObjecion('');
   };
 
-  /**
-   * Get modification badge info for a day
-   */
-  const getModificacionInfo = (observaciones: string[] | undefined) => {
-    if (!observaciones) return null;
-    if (observaciones.includes('manual')) {
-      return { icon: 'pencil-plus' as const, color: '#D97706', label: 'Manual' };
-    }
-    if (observaciones.includes('editado')) {
-      return { icon: 'pencil' as const, color: '#6B7280', label: 'Editado' };
-    }
-    if (observaciones.includes('ajustado')) {
-      return { icon: 'clock-edit-outline' as const, color: '#2563EB', label: 'Ajustado' };
-    }
-    return null;
-  };
-
-  /**
-   * Render a day row
-   */
-  const renderDia = (dia: DiaCierre, index: number) => {
-    const fechaDate = parseISO(dia.fecha);
-    const isSeleccionado = diasSeleccionados.has(dia.fecha);
-    const isDescanso = dia.observaciones?.includes('ausente') || dia.horas_netas === 0;
-    const modificacion = getModificacionInfo(dia.observaciones);
-
-    return (
-      <TouchableOpacity
-        key={dia.fecha}
-        style={[
-          styles.diaRow,
-          index % 2 === 0 && styles.diaRowAlt,
-          isDescanso && styles.diaDescanso,
-          showObjecionModal && isSeleccionado && styles.diaSeleccionado,
-        ]}
-        onPress={() => showObjecionModal && toggleDiaSeleccionado(dia.fecha)}
-        disabled={!showObjecionModal}
-        activeOpacity={showObjecionModal ? 0.7 : 1}
-      >
-        <View style={styles.diaInfo}>
-          <View style={styles.diaNombreRow}>
-            <Text style={[styles.diaNombre, isDescanso && styles.diaDescansoText]}>
-              {dia.dia_semana}
-            </Text>
-            {modificacion && (
-              <View style={[styles.modificacionBadge, { backgroundColor: modificacion.color + '20' }]}>
-                <MaterialCommunityIcons
-                  name={modificacion.icon}
-                  size={12}
-                  color={modificacion.color}
-                />
-              </View>
-            )}
-          </View>
-          <Text style={styles.diaFecha}>
-            {format(fechaDate, 'd MMM', { locale: es })}
-          </Text>
-        </View>
-        <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
-          {formatTime(dia.entrada)}
-        </Text>
-        <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
-          {formatTime(dia.salida)}
-        </Text>
-        <Text style={[styles.diaTotal, isDescanso && styles.diaDescansoText]}>
-          {formatHoras(dia.horas_netas)}
-        </Text>
-        {showObjecionModal && (
-          <MaterialCommunityIcons
-            name={isSeleccionado ? 'checkbox-marked' : 'checkbox-blank-outline'}
-            size={24}
-            color={isSeleccionado ? COLORS.error : COLORS.textSecondary}
-          />
-        )}
-      </TouchableOpacity>
-    );
-  };
+  // renderDia replaced by DiaCierreRow memoized component
 
   // Loading state
   if (loading) {
@@ -373,32 +418,7 @@ export const DetalleCierreScreen: React.FC = () => {
     (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
     (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0;
 
-  // Componente para mostrar fila de aprobación
-  const AprobacionRow = ({
-    tipo,
-    aprobadas,
-    rechazadas,
-  }: {
-    tipo: string;
-    aprobadas: number;
-    rechazadas: number;
-  }) => (
-    <View style={styles.aprobacionRow}>
-      <Text style={styles.aprobacionTipo}>{tipo}</Text>
-      <View style={styles.aprobacionBadges}>
-        {aprobadas > 0 && (
-          <View style={[styles.badge, styles.badgeAprobada]}>
-            <Text style={styles.badgeTextAprobada}>✓ {formatHoras(aprobadas)}</Text>
-          </View>
-        )}
-        {rechazadas > 0 && (
-          <View style={[styles.badge, styles.badgeRechazada]}>
-            <Text style={styles.badgeTextRechazada}>✗ {formatHoras(rechazadas)}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
+  // AprobacionRow moved outside component for optimization (memoized)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -526,7 +546,16 @@ export const DetalleCierreScreen: React.FC = () => {
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>Salida</Text>
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>Horas</Text>
           </View>
-          {datos_semana.dias.map((dia, index) => renderDia(dia, index))}
+          {datos_semana.dias.map((dia, index) => (
+            <DiaCierreRow
+              key={dia.fecha}
+              dia={dia}
+              index={index}
+              isSeleccionado={diasSeleccionados.has(dia.fecha)}
+              showObjecionModal={showObjecionModal}
+              onToggle={toggleDiaSeleccionado}
+            />
+          ))}
         </View>
 
         {/* Admin response (B6) - Shows when admin has responded to previous objection */}
@@ -628,7 +657,16 @@ export const DetalleCierreScreen: React.FC = () => {
             </Text>
 
             <ScrollView style={styles.modalDias}>
-              {datos_semana.dias.map((dia, index) => renderDia(dia, index))}
+              {datos_semana.dias.map((dia, index) => (
+                <DiaCierreRow
+                  key={dia.fecha}
+                  dia={dia}
+                  index={index}
+                  isSeleccionado={diasSeleccionados.has(dia.fecha)}
+                  showObjecionModal={showObjecionModal}
+                  onToggle={toggleDiaSeleccionado}
+                />
+              ))}
             </ScrollView>
 
             <Text style={styles.inputLabel}>
