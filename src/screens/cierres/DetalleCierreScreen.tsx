@@ -5,7 +5,7 @@
  * Shows days, totals, and allows confirming or objecting.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import CierreStatusBadge from '@/components/cierres/CierreStatusBadge';
 import { ConfirmacionCierreFlow } from '@/components/cierres/ConfirmacionCierreFlow';
 import useCierres from '@/hooks/useCierres';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/services/supabase/client';
 import type { CierreSemanal, DiaCierre, ObjecionDia } from '@/types/cierres.types';
 import type { CierresStackParamList } from '@/types/navigation.types';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '@/constants/theme';
@@ -52,17 +53,71 @@ export const DetalleCierreScreen: React.FC = () => {
   // State for confirmation flow (B7)
   const [showConfirmacionFlow, setShowConfirmacionFlow] = useState(false);
 
+  // State for rejection comments
+  const [comentariosRechazo, setComentariosRechazo] = useState<string[]>([]);
+
+  // Helper para traducir tipo de novedad
+  const traducirTipo = useCallback((tipo: string): string => {
+    const traducciones: Record<string, string> = {
+      'horas_extra': 'Extra diarias',
+      'horas_extra_nocturna': 'Extra nocturnas',
+      'horas_extra_semanal': 'Extra semanales',
+      'horas_nocturnas': 'Nocturnas',
+    };
+    return traducciones[tipo] || tipo;
+  }, []);
+
+  // Cargar comentarios de rechazo cuando hay horas rechazadas
+  const cargarComentariosRechazo = useCallback(async (cierreData: CierreSemanal) => {
+    const totales = cierreData.datos_semana.totales;
+    const tieneRechazadas =
+      (totales.horas_extra_rechazadas ?? 0) > 0 ||
+      (totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
+      (totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
+      (totales.horas_nocturnas_rechazadas ?? 0) > 0;
+
+    if (!tieneRechazadas) {
+      setComentariosRechazo([]);
+      return;
+    }
+
+    try {
+      const { data } = await supabase
+        .from('horarios_novedades')
+        .select('tipo_novedad, comentarios_revision')
+        .eq('cedula', cierreData.cedula)
+        .gte('fecha', cierreData.semana_inicio)
+        .lte('fecha', cierreData.semana_fin)
+        .eq('estado', 'rechazada')
+        .not('comentarios_revision', 'is', null) as { data: { tipo_novedad: string; comentarios_revision: string }[] | null };
+
+      if (data && data.length > 0) {
+        setComentariosRechazo(
+          data.map(n => `${traducirTipo(n.tipo_novedad)}: ${n.comentarios_revision}`)
+        );
+      } else {
+        setComentariosRechazo([]);
+      }
+    } catch (error) {
+      console.error('Error cargando comentarios de rechazo:', error);
+      setComentariosRechazo([]);
+    }
+  }, [traducirTipo]);
+
   const cargarCierre = useCallback(async () => {
     try {
       setLoading(true);
       const data = await obtenerCierrePorId(route.params.cierreId);
       setCierre(data);
+      if (data) {
+        cargarComentariosRechazo(data);
+      }
     } catch (error) {
       console.error('Error cargando cierre:', error);
     } finally {
       setLoading(false);
     }
-  }, [route.params.cierreId, obtenerCierrePorId]);
+  }, [route.params.cierreId, obtenerCierrePorId, cargarComentariosRechazo]);
 
   // Reload data every time screen is focused (not just on mount)
   useFocusEffect(
@@ -305,6 +360,46 @@ export const DetalleCierreScreen: React.FC = () => {
   const { datos_semana } = cierre;
   const puedeResponder = cierre.estado === 'publicado';
 
+  // Variables auxiliares para sección de aprobación
+  const tieneHorasEspeciales =
+    datos_semana.totales.horas_extra > 0 ||
+    (datos_semana.totales.horas_extra_nocturna ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_semanal ?? 0) > 0 ||
+    datos_semana.totales.horas_nocturnas > 0;
+
+  const tieneHorasRechazadas =
+    (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0;
+
+  // Componente para mostrar fila de aprobación
+  const AprobacionRow = ({
+    tipo,
+    aprobadas,
+    rechazadas,
+  }: {
+    tipo: string;
+    aprobadas: number;
+    rechazadas: number;
+  }) => (
+    <View style={styles.aprobacionRow}>
+      <Text style={styles.aprobacionTipo}>{tipo}</Text>
+      <View style={styles.aprobacionBadges}>
+        {aprobadas > 0 && (
+          <View style={[styles.badge, styles.badgeAprobada]}>
+            <Text style={styles.badgeTextAprobada}>✓ {formatHoras(aprobadas)}</Text>
+          </View>
+        )}
+        {rechazadas > 0 && (
+          <View style={[styles.badge, styles.badgeRechazada]}>
+            <Text style={styles.badgeTextRechazada}>✗ {formatHoras(rechazadas)}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -340,6 +435,14 @@ export const DetalleCierreScreen: React.FC = () => {
                 <Text style={styles.totalLabel}>Extra diarias</Text>
               </View>
             )}
+            {(datos_semana.totales.horas_extra_nocturna ?? 0) > 0 && (
+              <View style={styles.totalItem}>
+                <Text style={[styles.totalValue, styles.totalExtraNocturna]}>
+                  {formatHoras(datos_semana.totales.horas_extra_nocturna)}
+                </Text>
+                <Text style={styles.totalLabel}>Extra nocturna</Text>
+              </View>
+            )}
             {(datos_semana.totales.horas_extra_semanal ?? 0) > 0 && (
               <View style={styles.totalItem}>
                 <Text style={[styles.totalValue, styles.totalExtraSemanal]}>
@@ -357,6 +460,61 @@ export const DetalleCierreScreen: React.FC = () => {
               </View>
             )}
           </View>
+
+          {/* Estados de Aprobación */}
+          {tieneHorasEspeciales && (
+            <View style={styles.aprobacionSection}>
+              <Text style={styles.sectionTitle}>Estado de horas especiales</Text>
+
+              {/* Horas extra diarias */}
+              {datos_semana.totales.horas_extra > 0 && (
+                <AprobacionRow
+                  tipo="Extra diarias"
+                  aprobadas={datos_semana.totales.horas_extra_aprobadas ?? 0}
+                  rechazadas={datos_semana.totales.horas_extra_rechazadas ?? 0}
+                />
+              )}
+
+              {/* Horas extra nocturnas */}
+              {(datos_semana.totales.horas_extra_nocturna ?? 0) > 0 && (
+                <AprobacionRow
+                  tipo="Extra nocturnas"
+                  aprobadas={datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0}
+                  rechazadas={datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0}
+                />
+              )}
+
+              {/* Horas extra semanales */}
+              {(datos_semana.totales.horas_extra_semanal ?? 0) > 0 && (
+                <AprobacionRow
+                  tipo="Extra semanales"
+                  aprobadas={datos_semana.totales.horas_extra_semanal_aprobadas ?? 0}
+                  rechazadas={datos_semana.totales.horas_extra_semanal_rechazadas ?? 0}
+                />
+              )}
+
+              {/* Horas nocturnas ordinarias */}
+              {datos_semana.totales.horas_nocturnas > 0 && (
+                <AprobacionRow
+                  tipo="Nocturnas"
+                  aprobadas={datos_semana.totales.horas_nocturnas_aprobadas ?? 0}
+                  rechazadas={datos_semana.totales.horas_nocturnas_rechazadas ?? 0}
+                />
+              )}
+
+              {/* Comentarios de rechazo (si existen) */}
+              {tieneHorasRechazadas && comentariosRechazo.length > 0 && (
+                <View style={styles.comentariosRechazo}>
+                  <Text style={styles.comentariosTitle}>Motivo del rechazo:</Text>
+                  {comentariosRechazo.map((comentario, idx) => (
+                    <Text key={idx} style={styles.comentarioRechazoText}>
+                      • {comentario}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Day detail */}
@@ -613,6 +771,9 @@ const styles = StyleSheet.create({
   totalExtra: {
     color: COLORS.success,
   },
+  totalExtraNocturna: {
+    color: '#7C3AED', // Violeta - consistente con Web Admin
+  },
   totalExtraSemanal: {
     color: '#EA580C', // Orange for weekly extra hours
   },
@@ -838,6 +999,72 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.textInverse,
+  },
+  // Estilos para sección de aprobación de horas especiales
+  aprobacionSection: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.backgroundSecondary,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  aprobacionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  aprobacionTipo: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    flex: 1,
+  },
+  aprobacionBadges: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+  },
+  badge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  badgeAprobada: {
+    backgroundColor: '#DCFCE7', // Verde claro
+  },
+  badgeRechazada: {
+    backgroundColor: '#FEE2E2', // Rojo claro
+  },
+  badgeTextAprobada: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: '#166534', // Verde oscuro
+  },
+  badgeTextRechazada: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: '#991B1B', // Rojo oscuro
+  },
+  // Estilos para comentarios de rechazo
+  comentariosRechazo: {
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    backgroundColor: '#FEF2F2', // Rojo muy claro
+    borderRadius: BORDER_RADIUS.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
+  },
+  comentariosTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: '#991B1B',
+    marginBottom: SPACING.xs,
+  },
+  comentarioRechazoText: {
+    fontSize: FONT_SIZES.sm,
+    color: '#7F1D1D',
+    marginLeft: SPACING.xs,
+    marginTop: 2,
   },
 });
 
