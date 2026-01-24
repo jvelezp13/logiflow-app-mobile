@@ -33,5 +33,17 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // Migration from v3 to v4: Add tenant_id for multi-tenant support
+    {
+      toVersion: 4,
+      steps: [
+        addColumns({
+          table: 'attendance_records',
+          columns: [
+            { name: 'tenant_id', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

@@ -8,7 +8,7 @@
 import { Alert } from 'react-native';
 import { attendanceRecordService } from '@services/storage';
 import type { AttendanceType, AttendanceRecord } from '@services/storage';
-import { useAuthStore } from '@store/authStore';
+import { useAuthStore, getTenantId } from '@store/authStore';
 import { notifyRecordCreated } from '@services/sync';
 import { supabase } from '@services/supabase/client';
 import { format } from 'date-fns';
@@ -86,6 +86,13 @@ export const attendanceService = {
       const authState = useAuthStore.getState();
       const kioskPin = authState.isKioskAuthenticated ? (authState.kioskPin ?? undefined) : undefined;
 
+      // Get tenant_id (OBLIGATORIO para multi-tenant)
+      const tenantId = getTenantId();
+      if (!tenantId) {
+        console.error('[AttendanceService] No tenant_id found in auth state');
+        throw new Error('Usuario sin empresa asignada. Contacte al administrador.');
+      }
+
       // Create attendance record in local database
       const record = await attendanceRecordService.create({
         userId: data.userId,
@@ -98,6 +105,7 @@ export const attendanceService = {
         latitude: data.latitude,
         longitude: data.longitude,
         kioskPin, // Store PIN for later sync (will be used after logout)
+        tenantId, // Multi-tenant: OBLIGATORIO
       });
 
       console.log('[AttendanceService] Clock success:', record.id);

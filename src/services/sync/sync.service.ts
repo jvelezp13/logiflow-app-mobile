@@ -10,6 +10,7 @@ import { attendanceRecordService } from '@services/storage';
 import { checkNetworkStatus } from '@hooks/useNetworkStatus';
 import type { AttendanceRecord } from '@services/storage';
 import { decode } from 'base64-arraybuffer';
+import { getTenantId } from '@store/authStore';
 
 /**
  * Edge Function URL for kiosk photo uploads
@@ -192,6 +193,14 @@ export const syncService = {
    */
   async syncRecord(record: AttendanceRecord, photoUrl?: string): Promise<boolean> {
     try {
+      // Obtener tenant_id: primero del registro local, luego del store
+      const tenantId = record.tenantId || getTenantId();
+
+      if (!tenantId) {
+        console.error('[SyncService] Cannot sync without tenant_id');
+        return false;
+      }
+
       // Prepare data for horarios_registros_diarios table
       // Only raw data is stored - calculations are done in reports/Web Admin
       const recordData = {
@@ -217,6 +226,9 @@ export const syncService = {
 
         // Processing metadata
         timestamp_procesamiento: new Date().toISOString(),
+
+        // Multi-tenant: OBLIGATORIO para RLS
+        tenant_id: tenantId,
       };
 
       // Strategy: Check if THIS EXACT record exists (by timestamp_local), then UPDATE or INSERT
@@ -662,6 +674,7 @@ export const syncService = {
         hora_fin_decimal: number | null;
         fuente: string | null;
         ajustado_at: string | null;
+        tenant_id: string | null;
       };
 
       // Calculate 30 days ago (matches UI month filter, optimized for low-capacity devices)
@@ -671,7 +684,7 @@ export const syncService = {
 
       const { data: remoteRecords, error: queryError } = await supabase
         .from('horarios_registros_diarios')
-        .select('cedula, empleado, fecha, tipo_marcaje, timestamp_local, hora_inicio_decimal, hora_fin_decimal, fuente, ajustado_at')
+        .select('cedula, empleado, fecha, tipo_marcaje, timestamp_local, hora_inicio_decimal, hora_fin_decimal, fuente, ajustado_at, tenant_id')
         .eq('cedula', userCedula)
         .gte('fecha', minDate)
         .not('timestamp_local', 'is', null)
@@ -790,6 +803,7 @@ export const syncService = {
             hora_fin_decimal: remote.hora_fin_decimal,
             fuente: remote.fuente,
             ajustado_at: remote.ajustado_at,
+            tenant_id: remote.tenant_id,
           });
 
           if (result) {

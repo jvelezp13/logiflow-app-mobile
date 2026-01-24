@@ -7,12 +7,13 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 /**
- * Database schema version 3
+ * Database schema version 4
  * v2: Added kiosk_pin field for kiosk mode uploads
  * v3: Added fuente and remote_updated_at fields for admin edit tracking
+ * v4: Added tenant_id for multi-tenant support
  */
 export const schema = appSchema({
-  version: 3,
+  version: 4,
   tables: [
     /**
      * Attendance Records Table
@@ -43,6 +44,7 @@ export const schema = appSchema({
         { name: 'synced_at', type: 'number', isOptional: true },
         { name: 'fuente', type: 'string', isOptional: true }, // 'mobile' | 'admin_manual' | 'admin_edit'
         { name: 'remote_updated_at', type: 'number', isOptional: true }, // Timestamp of last remote update (ajustado_at)
+        { name: 'tenant_id', type: 'string', isOptional: true }, // Multi-tenant: ID del tenant
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

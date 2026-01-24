@@ -23,6 +23,7 @@ export type CreateAttendanceRecordData = {
   latitude?: number;
   longitude?: number;
   kioskPin?: string; // For kiosk mode uploads
+  tenantId?: string; // Multi-tenant: ID del tenant
 };
 
 /**
@@ -84,6 +85,7 @@ export const attendanceRecordService = {
           rec.longitude = data.longitude;
           rec.attendanceSyncStatus = 'pending';
           rec.syncAttempts = 0;
+          rec.tenantId = data.tenantId; // Multi-tenant
         });
       });
 
@@ -95,6 +97,7 @@ export const attendanceRecordService = {
         date: record.date,
         time: record.time,
         type: record.attendanceType,
+        tenantId: record.tenantId,
       });
 
       return record;
@@ -408,6 +411,7 @@ export const attendanceRecordService = {
     hora_fin_decimal: number | null;
     fuente?: string | null;
     ajustado_at?: string | null;
+    tenant_id?: string | null; // Multi-tenant
     // Optional fields (not fetched in optimized pull)
     foto_url?: string | null;
     observaciones?: string | null;
@@ -458,6 +462,8 @@ export const attendanceRecordService = {
           // Track source and remote update time
           rec.fuente = data.fuente || 'mobile';
           rec.remoteUpdatedAt = remoteUpdatedAt;
+          // Multi-tenant
+          rec.tenantId = data.tenant_id || undefined;
         });
       });
 
@@ -466,6 +472,7 @@ export const attendanceRecordService = {
         timestamp: data.timestamp_local,
         date: data.fecha,
         fuente: data.fuente,
+        tenantId: data.tenant_id,
       });
 
       return record;

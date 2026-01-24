@@ -59,6 +59,9 @@ export class AttendanceRecord extends Model {
   @field('fuente') fuente?: string; // 'mobile' | 'admin_manual' | 'admin_edit'
   @field('remote_updated_at') remoteUpdatedAt?: number; // Timestamp of last remote update
 
+  // Multi-tenant
+  @field('tenant_id') tenantId?: string; // ID del tenant al que pertenece el registro
+
   // Timestamps
   @readonly @date('created_at') createdAt!: Date;
   @readonly @date('updated_at') updatedAt!: Date;

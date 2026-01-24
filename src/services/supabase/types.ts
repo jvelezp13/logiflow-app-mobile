@@ -31,6 +31,7 @@ export interface Database {
           nombre: string;
           updated_at: string;
           user_id: string;
+          tenant_id: string | null; // Multi-tenant support
         };
         Insert: {
           activo?: boolean;
@@ -42,6 +43,7 @@ export interface Database {
           nombre: string;
           updated_at?: string;
           user_id: string;
+          tenant_id?: string | null;
         };
         Update: {
           activo?: boolean;
@@ -53,6 +55,7 @@ export interface Database {
           nombre?: string;
           updated_at?: string;
           user_id?: string;
+          tenant_id?: string | null;
         };
       };
       horarios_registros_diarios: {
@@ -77,6 +80,7 @@ export interface Database {
           fuente: string | null; // 'mobile'
           deleted_at: string | null;
           deleted_by: string | null;
+          tenant_id: string | null; // Multi-tenant support
         };
         Insert: {
           id?: number;
@@ -98,6 +102,7 @@ export interface Database {
           fuente?: string | null;
           deleted_at?: string | null;
           deleted_by?: string | null;
+          tenant_id?: string | null;
         };
         Update: {
           id?: number;
@@ -119,6 +124,7 @@ export interface Database {
           fuente?: string | null;
           deleted_at?: string | null;
           deleted_by?: string | null;
+          tenant_id?: string | null;
         };
       };
     };

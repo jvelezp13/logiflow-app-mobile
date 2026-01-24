@@ -21,6 +21,7 @@ export type AuthResult = {
     email: string;
     profile: Profile;
     cedula?: string;
+    tenantId?: string; // Multi-tenant
   };
 };
 
@@ -32,6 +33,7 @@ export type UserData = {
   email: string;
   profile: Profile;
   cedula?: string; // Shortcut accessor for profile.cedula
+  tenantId?: string; // Multi-tenant: ID del tenant al que pertenece el usuario
 };
 
 /**
@@ -125,6 +127,15 @@ export const signIn = async (
       };
     }
 
+    // Validate tenant_id exists (required for multi-tenant)
+    if (!profile.tenant_id) {
+      await signOut();
+      return {
+        success: false,
+        error: 'Usuario sin empresa asignada. Contacte al administrador.',
+      };
+    }
+
     return {
       success: true,
       user: {
@@ -132,6 +143,7 @@ export const signIn = async (
         email: data.user.email!,
         profile,
         cedula: profile.cedula || undefined,
+        tenantId: profile.tenant_id || undefined,
       },
     };
   } catch (error) {
@@ -206,6 +218,7 @@ export const getCurrentUser = async (): Promise<UserData | null> => {
       email: session.user.email!,
       profile,
       cedula: profile.cedula || undefined,
+      tenantId: profile.tenant_id || undefined,
     };
   } catch (error) {
     console.error('[Auth] Get current user error:', error);

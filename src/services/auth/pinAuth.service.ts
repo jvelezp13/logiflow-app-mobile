@@ -17,6 +17,7 @@ export interface PinUserData {
   nombre: string;
   apellido: string | null;
   email: string | null;
+  tenant_id: string; // Multi-tenant: ID del tenant al que pertenece el usuario
 }
 
 /**
@@ -85,6 +86,15 @@ export async function authenticateWithPin(pin: string): Promise<PinAuthResult> {
       return {
         success: false,
         error: 'Datos de usuario incompletos',
+      };
+    }
+
+    // Validate tenant_id (required for multi-tenant)
+    if (!userData.tenant_id) {
+      console.error('[PinAuthService] User without tenant_id:', userData.cedula);
+      return {
+        success: false,
+        error: 'Usuario sin empresa asignada. Contacte al administrador.',
       };
     }
 

@@ -30,6 +30,10 @@ type AuthState = {
   isInitializing: boolean;
   error: string | null;
 
+  // Multi-tenant State
+  tenantId: string | null;
+  tenantNombre: string | null;
+
   // Kiosk Mode State
   kioskMode: boolean;
   kioskUser: PinUserData | null;
@@ -59,6 +63,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   isInitializing: true,
   error: null,
+
+  // Multi-tenant initial state
+  tenantId: null,
+  tenantNombre: null,
 
   // Kiosk initial state
   kioskMode: false,
@@ -115,6 +123,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             kioskMode: false,
             isInitializing: false,
+            tenantId: cachedUser.tenantId || null,
+            tenantNombre: null,
           });
         } else {
           console.log('[AuthStore] Offline and no cached session, login required when online');
@@ -140,6 +150,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isAuthenticated: true,
           kioskMode: false,
           isInitializing: false,
+          tenantId: user.tenantId || null,
+          tenantNombre: null,
         });
         console.log('[AuthStore] Session validated online');
       } else {
@@ -167,6 +179,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             kioskMode: false,
             isInitializing: false,
+            tenantId: cachedUser.tenantId || null,
+            tenantNombre: null,
           });
           return;
         }
@@ -208,6 +222,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isAuthenticated: true,
           isLoading: false,
           error: null,
+          tenantId: result.user.tenantId || null,
+          tenantNombre: null, // Se podria obtener del tenant si es necesario
         });
 
         return true;
@@ -253,6 +269,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAuthenticated: false,
         isLoading: false,
         error: null,
+        tenantId: null,
+        tenantNombre: null,
       });
     } catch (error) {
       console.error('[AuthStore] Logout error:', error);
@@ -262,6 +280,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAuthenticated: false,
         isLoading: false,
         error: null,
+        tenantId: null,
+        tenantNombre: null,
       });
     }
   },
@@ -358,6 +378,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           kioskPin: pin, // Store PIN in memory for photo uploads
           isLoading: false,
           error: null,
+          tenantId: result.user.tenant_id, // Multi-tenant: guardar tenant_id del usuario kiosk
+          tenantNombre: null,
         });
 
         console.log('[AuthStore] PIN login successful');
@@ -398,6 +420,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isKioskAuthenticated: false,
       kioskPin: null, // Clear PIN from memory
       error: null,
+      tenantId: null,
+      tenantNombre: null,
     });
   },
 }));
@@ -471,4 +495,22 @@ export const useUserFullName = () => {
   if (!user?.profile) return '';
   const { nombre, apellido } = user.profile;
   return `${nombre}${apellido ? ' ' + apellido : ''}`;
+};
+
+/**
+ * Hook to get current tenant ID
+ * Returns tenant ID from normal user or kiosk user
+ * IMPORTANT: Always use this to get tenant_id for sync operations
+ */
+export const useTenantId = () => {
+  const tenantId = useAuthStore((state) => state.tenantId);
+  return tenantId;
+};
+
+/**
+ * Get current tenant ID (non-hook version)
+ * For use in services/utilities outside React components
+ */
+export const getTenantId = (): string | null => {
+  return useAuthStore.getState().tenantId;
 };

@@ -117,14 +117,43 @@ Schema en `src/services/storage/schema.ts`:
 - `attendance_records`: Marcajes locales con status de sincronización
 - Model: `src/services/storage/models/AttendanceRecord.ts`
 
-## Decisiones de Diseño Clave
+## Arquitectura Multi-Tenant
 
-1. **Offline-first:** Marcajes se guardan localmente primero, se sincronizan cuando hay conexión
-2. **Validación de hora:** Marcaje rechazado si hora del dispositivo difiere >5min del servidor
-3. **Sin marcaje de pausas:** Descanso pre-configurado por rol, se resta automáticamente
-4. **Pull optimizado:** Historial limitado a 30 días, limpieza automática de registros antiguos
-5. **Sesión offline:** Si no hay conexión, usa cache de AsyncStorage para mantener sesión
-6. **Timestamps UTC:** DB almacena UTC, conversión a hora local solo en UI
+El sistema soporta multiples empresas/clientes con aislamiento de datos via RLS.
+
+### Flujo de tenant_id
+
+| Escenario | Fuente de tenant_id |
+|-----------|---------------------|
+| Login normal (email/pass) | `profile.tenant_id` via query |
+| Modo Kiosk (PIN) | `authenticate_with_pin` RPC retorna `tenant_id` |
+| Marcaje local | Guardado en WatermelonDB junto con el registro |
+| Sincronizacion | Incluido en cada INSERT a `horarios_registros_diarios` |
+
+### Archivos clave multi-tenant
+
+- `src/store/authStore.ts` - Estado `tenantId` y funcion `getTenantId()`
+- `src/services/auth/pinAuth.service.ts` - `PinUserData.tenant_id`
+- `src/services/supabase/auth.service.ts` - `UserData.tenantId`
+- `src/services/storage/schema.ts` - Columna `tenant_id` en WatermelonDB (v4)
+- `src/services/sync/sync.service.ts` - Incluye `tenant_id` en sync
+- `src/utils/tenant.utils.ts` - Helpers: `obtenerTenantIdActual()`, `obtenerTenantIdRequerido()`
+
+### IMPORTANTE
+
+- **TODOS** los registros enviados a Supabase DEBEN incluir `tenant_id`
+- RLS filtra automaticamente por tenant
+- Si `tenant_id` es null, el INSERT fallara silenciosamente por RLS
+
+## Decisiones de Diseno Clave
+
+1. **Offline-first:** Marcajes se guardan localmente primero, se sincronizan cuando hay conexion
+2. **Validacion de hora:** Marcaje rechazado si hora del dispositivo difiere >5min del servidor
+3. **Sin marcaje de pausas:** Descanso pre-configurado por rol, se resta automaticamente
+4. **Pull optimizado:** Historial limitado a 30 dias, limpieza automatica de registros antiguos
+5. **Sesion offline:** Si no hay conexion, usa cache de AsyncStorage para mantener sesion
+6. **Timestamps UTC:** DB almacena UTC, conversion a hora local solo en UI
+7. **Multi-tenant:** Todos los datos estan aislados por `tenant_id` via RLS
 
 ## MCP Supabase
 
