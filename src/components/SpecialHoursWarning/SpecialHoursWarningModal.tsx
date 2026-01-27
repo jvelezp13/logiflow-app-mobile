@@ -35,6 +35,13 @@ export type SpecialHoursWarningModalProps = {
   onConfirm: () => void;
 };
 
+// Formato "Xh Ym" para horas decimales
+const formatHorasMinutos = (horas: number): string => {
+  const h = Math.floor(horas);
+  const m = Math.round((horas - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
 const SpecialHoursWarningModalComponent: React.FC<SpecialHoursWarningModalProps> = ({
   visible,
   type,
@@ -62,9 +69,8 @@ const SpecialHoursWarningModalComponent: React.FC<SpecialHoursWarningModalProps>
     const messages: string[] = [];
 
     if (type === 'extra' || type === 'ambas') {
-      const horasExtraFormatted = horasExtra.toFixed(1);
       messages.push(
-        `Al marcar salida, tendrás aproximadamente ${horasExtraFormatted} horas extra que exceden tu jornada diaria permitida.`
+        `Al marcar salida, tendrás aproximadamente ${formatHorasMinutos(horasExtra)} extra que exceden tu jornada diaria permitida.`
       );
     }
 
