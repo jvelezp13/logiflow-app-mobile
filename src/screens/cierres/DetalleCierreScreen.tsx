@@ -417,11 +417,16 @@ export const DetalleCierreScreen: React.FC = () => {
   const puedeResponder = cierre.estado === 'publicado';
 
   // Variables auxiliares para sección de aprobación
+  // Usar valores de novedades (aprobadas/rechazadas) para determinar si hay horas especiales
   const tieneHorasEspeciales =
-    datos_semana.totales.horas_extra > 0 ||
-    (datos_semana.totales.horas_extra_nocturna ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_semanal ?? 0) > 0 ||
-    datos_semana.totales.horas_nocturnas > 0;
+    (datos_semana.totales.horas_extra_aprobadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_semanal_aprobadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_nocturnas_aprobadas ?? 0) > 0 ||
+    (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0;
 
   const tieneHorasRechazadas =
     (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0 ||
@@ -451,54 +456,21 @@ export const DetalleCierreScreen: React.FC = () => {
         {/* Totals */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Resumen de la semana</Text>
-          <View style={styles.totalesGrid}>
-            <View style={styles.totalItem}>
-              <Text style={styles.totalValue}>
-                {formatHoras(datos_semana.totales.horas_trabajadas)}
-              </Text>
-              <Text style={styles.totalLabel}>Registradas</Text>
-            </View>
-            {datos_semana.totales.horas_extra > 0 && (
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, styles.totalExtra]}>
-                  {formatHoras(datos_semana.totales.horas_extra)}
-                </Text>
-                <Text style={styles.totalLabel}>Extra diarias</Text>
-              </View>
-            )}
-            {(datos_semana.totales.horas_extra_nocturna ?? 0) > 0 && (
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, styles.totalExtraNocturna]}>
-                  {formatHoras(datos_semana.totales.horas_extra_nocturna)}
-                </Text>
-                <Text style={styles.totalLabel}>Extra nocturna</Text>
-              </View>
-            )}
-            {(datos_semana.totales.horas_extra_semanal ?? 0) > 0 && (
-              <View style={styles.totalItem}>
-                <Text style={[styles.totalValue, styles.totalExtraSemanal]}>
-                  {formatHoras(datos_semana.totales.horas_extra_semanal)}
-                </Text>
-                <Text style={styles.totalLabel}>Extra semanal</Text>
-              </View>
-            )}
-            {datos_semana.totales.horas_nocturnas > 0 && (
-              <View style={styles.totalItem}>
-                <Text style={styles.totalValue}>
-                  {formatHoras(datos_semana.totales.horas_nocturnas)}
-                </Text>
-                <Text style={styles.totalLabel}>Nocturnas</Text>
-              </View>
-            )}
+
+          {/* Total de horas registradas */}
+          <View style={styles.horasRegistradasContainer}>
+            <Text style={styles.horasRegistradasValue}>
+              {formatHoras(datos_semana.totales.horas_trabajadas)}
+            </Text>
+            <Text style={styles.horasRegistradasLabel}>Registradas</Text>
           </View>
 
-          {/* Estados de Aprobación */}
+          {/* Horas especiales con badges inline */}
           {tieneHorasEspeciales && (
-            <View style={styles.aprobacionSection}>
-              <Text style={styles.sectionTitle}>Estado de horas especiales</Text>
-
-              {/* Horas extra diarias */}
-              {datos_semana.totales.horas_extra > 0 && (
+            <View style={styles.horasEspecialesCompacto}>
+              {/* Extra diarias - mostrar si hay aprobadas o rechazadas */}
+              {((datos_semana.totales.horas_extra_aprobadas ?? 0) > 0 ||
+                (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0) && (
                 <AprobacionRow
                   tipo="Extra diarias"
                   aprobadas={datos_semana.totales.horas_extra_aprobadas ?? 0}
@@ -506,8 +478,9 @@ export const DetalleCierreScreen: React.FC = () => {
                 />
               )}
 
-              {/* Horas extra nocturnas */}
-              {(datos_semana.totales.horas_extra_nocturna ?? 0) > 0 && (
+              {/* Extra nocturnas */}
+              {((datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0) > 0 ||
+                (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0) && (
                 <AprobacionRow
                   tipo="Extra nocturnas"
                   aprobadas={datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0}
@@ -515,8 +488,9 @@ export const DetalleCierreScreen: React.FC = () => {
                 />
               )}
 
-              {/* Horas extra semanales */}
-              {(datos_semana.totales.horas_extra_semanal ?? 0) > 0 && (
+              {/* Extra semanales */}
+              {((datos_semana.totales.horas_extra_semanal_aprobadas ?? 0) > 0 ||
+                (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0) && (
                 <AprobacionRow
                   tipo="Extra semanales"
                   aprobadas={datos_semana.totales.horas_extra_semanal_aprobadas ?? 0}
@@ -524,8 +498,9 @@ export const DetalleCierreScreen: React.FC = () => {
                 />
               )}
 
-              {/* Horas nocturnas ordinarias */}
-              {datos_semana.totales.horas_nocturnas > 0 && (
+              {/* Nocturnas ordinarias */}
+              {((datos_semana.totales.horas_nocturnas_aprobadas ?? 0) > 0 ||
+                (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0) && (
                 <AprobacionRow
                   tipo="Nocturnas"
                   aprobadas={datos_semana.totales.horas_nocturnas_aprobadas ?? 0}
@@ -799,6 +774,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
     marginBottom: SPACING.md,
+  },
+  // Estilos para diseño compacto de horas registradas
+  horasRegistradasContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  horasRegistradasValue: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  horasRegistradasLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  horasEspecialesCompacto: {
+    backgroundColor: COLORS.backgroundSecondary,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
   },
   totalesGrid: {
     flexDirection: 'row',
