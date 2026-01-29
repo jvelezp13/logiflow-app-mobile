@@ -47,6 +47,11 @@ export const attendanceRecordService = {
    */
   async create(data: CreateAttendanceRecordData): Promise<AttendanceRecord> {
     try {
+      // Validar tenant_id obligatorio (previene fallos silenciosos en sync)
+      if (!data.tenantId) {
+        throw new Error('tenant_id requerido para crear registro de asistencia');
+      }
+
       const now = Date.now();
       const nowDate = new Date(now);
 
