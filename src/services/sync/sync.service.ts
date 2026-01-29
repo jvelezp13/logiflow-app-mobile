@@ -11,6 +11,7 @@ import { checkNetworkStatus } from '@hooks/useNetworkStatus';
 import type { AttendanceRecord } from '@services/storage';
 import { decode } from 'base64-arraybuffer';
 import { getTenantId } from '@store/authStore';
+import { fetchWithRetry, withRetry } from '@utils/network.utils';
 
 /**
  * Edge Function URL for kiosk photo uploads
@@ -100,13 +101,18 @@ export const syncService = {
       // Convert base64 to ArrayBuffer
       const arrayBuffer = decode(base64Data);
 
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('attendance_photos')
-        .upload(fileName, arrayBuffer, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
+      // Upload to Supabase Storage con retry
+      const { data, error } = await withRetry(
+        async () =>
+          await supabase.storage.from('attendance_photos').upload(fileName, arrayBuffer, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          }),
+        {
+          onRetry: (attempt) =>
+            console.log(`[SyncService] Retry upload foto (${attempt})`),
+        }
+      );
 
       if (error) {
         console.error('[SyncService] Photo upload error:', error);
@@ -147,21 +153,28 @@ export const syncService = {
       // Get Supabase anon key for authorization
       const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-      // Call Edge Function with Authorization header
-      const response = await fetch(EDGE_FUNCTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY,
+      // Call Edge Function con timeout y retry
+      const response = await fetchWithRetry(
+        EDGE_FUNCTION_URL,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            pin,
+            photoBase64,
+            userId,
+            recordId,
+          }),
         },
-        body: JSON.stringify({
-          pin,
-          photoBase64,
-          userId,
-          recordId,
-        }),
-      });
+        {
+          onRetry: (attempt) =>
+            console.log(`[SyncService] Retry upload kiosk (${attempt})`),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -236,13 +249,20 @@ export const syncService = {
       // Each attendance record from the app has a unique timestamp_local
 
       // Step 1: Check if THIS EXACT record already exists (same user, date, type AND timestamp)
-      const { data: existingRecords, error: selectError } = await supabase
-        .from('horarios_registros_diarios')
-        .select('id')
-        .eq('cedula', record.userCedula)
-        .eq('fecha', record.date)
-        .eq('timestamp_local', record.timestamp)
-        .limit(1);
+      const { data: existingRecords, error: selectError } = await withRetry(
+        async () =>
+          await supabase
+            .from('horarios_registros_diarios')
+            .select('id')
+            .eq('cedula', record.userCedula)
+            .eq('fecha', record.date)
+            .eq('timestamp_local', record.timestamp)
+            .limit(1),
+        {
+          onRetry: (attempt) =>
+            console.log(`[SyncService] Retry SELECT (${attempt})`),
+        }
+      );
 
       if (selectError) {
         console.error('[SyncService] Select error:', selectError);
@@ -253,11 +273,18 @@ export const syncService = {
       if (existingRecords && existingRecords.length > 0) {
         // This exact record exists (same timestamp), update it
         const existingId = (existingRecords[0] as { id: number }).id;
-        const { error: updateError } = await supabase
-          .from('horarios_registros_diarios')
-          // @ts-expect-error - Supabase type inference issue with complex table schemas
-          .update(recordData)
-          .eq('id', existingId);
+        const { error: updateError } = await withRetry(
+          async () =>
+            await supabase
+              .from('horarios_registros_diarios')
+              // @ts-expect-error - Supabase type inference issue with complex table schemas
+              .update(recordData)
+              .eq('id', existingId),
+          {
+            onRetry: (attempt) =>
+              console.log(`[SyncService] Retry UPDATE (${attempt})`),
+          }
+        );
 
         if (updateError) {
           console.error('[SyncService] Update error:', updateError);
@@ -267,10 +294,17 @@ export const syncService = {
         console.log('[SyncService] Record updated successfully (re-sync)');
       } else {
         // New record, insert it (allows multiple entries/exits per day)
-        const { error: insertError } = await supabase
-          .from('horarios_registros_diarios')
-          // @ts-expect-error - Supabase type inference issue with complex table schemas
-          .insert(recordData);
+        const { error: insertError } = await withRetry(
+          async () =>
+            await supabase
+              .from('horarios_registros_diarios')
+              // @ts-expect-error - Supabase type inference issue with complex table schemas
+              .insert(recordData),
+          {
+            onRetry: (attempt) =>
+              console.log(`[SyncService] Retry INSERT (${attempt})`),
+          }
+        );
 
         if (insertError) {
           // Error 23505 = duplicate key, meaning the record already exists in Supabase

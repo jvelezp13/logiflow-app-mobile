@@ -160,16 +160,15 @@ export const timeValidationService = {
       const serverTime = await this.getServerTime();
 
       if (!serverTime) {
-        // If we can't get server time, we'll allow the operation
-        // but log a warning
-        console.warn('[TimeValidation] Could not get server time, allowing operation');
+        // Si no podemos obtener la hora del servidor, permitir la operacion
+        // El fraude requiere conocimiento intencional (modo avion + cambiar hora)
+        console.warn('[TimeValidation] Could not get server time, allowing operation (offline mode)');
         return {
           isValid: true,
           serverTime: null,
           deviceTime,
           diffMs: 0,
           diffMinutes: 0,
-          error: 'No se pudo obtener hora del servidor',
         };
       }
 
@@ -203,14 +202,13 @@ export const timeValidationService = {
     } catch (error) {
       console.error('[TimeValidation] Validation error:', error);
 
-      // On error, allow operation but flag it
+      // Si hay error, permitir la operacion (modo offline)
       return {
         isValid: true,
         serverTime: null,
         deviceTime,
         diffMs: 0,
         diffMinutes: 0,
-        error: error instanceof Error ? error.message : 'Error desconocido',
       };
     }
   },

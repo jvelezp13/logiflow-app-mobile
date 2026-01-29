@@ -46,6 +46,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "reactNativeArchitectures": ["armeabi-v7a", "arm64-v8a"]
+          }
+        }
+      ]
+    ]
   }
 }
