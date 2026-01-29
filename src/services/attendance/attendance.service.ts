@@ -271,6 +271,85 @@ export const attendanceService = {
     return lastType === 'clock_in';
   },
 
+  // ============================================================
+  // Funciones por Cédula - Para sincronización multi-dispositivo
+  // ============================================================
+
+  /**
+   * Get today's attendance records by cédula
+   * Usado para detectar marcajes hechos en otros dispositivos (ej: kiosco)
+   */
+  async getTodayRecordsByCedula(userCedula: string): Promise<AttendanceRecord[]> {
+    try {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`;
+
+      console.log('[AttendanceService] Getting today records by cedula:', {
+        userCedula,
+        todayStr,
+      });
+
+      const records = await attendanceRecordService.getByDateRange(todayStr, todayStr);
+
+      // Filtrar por cédula (no por userId)
+      const filtered = records.filter((r) => r.userCedula === userCedula);
+
+      console.log('[AttendanceService] Records filtered by cedula:', {
+        total: records.length,
+        filtered: filtered.length,
+      });
+
+      return filtered;
+    } catch (error) {
+      console.error('[AttendanceService] Get today records by cedula error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get last clock type by cédula
+   * Detecta el último marcaje sin importar en qué dispositivo se hizo
+   */
+  async getLastClockTypeByCedula(userCedula: string): Promise<AttendanceType | null> {
+    try {
+      const todayRecords = await this.getTodayRecordsByCedula(userCedula);
+
+      if (todayRecords.length === 0) {
+        return null;
+      }
+
+      // Ordenar por timestamp descendente y tomar el primero
+      const sorted = todayRecords.sort((a, b) => b.timestamp - a.timestamp);
+      return sorted[0].attendanceType;
+    } catch (error) {
+      console.error('[AttendanceService] Get last clock type by cedula error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Check if user can clock in by cédula
+   * Considera marcajes de todos los dispositivos
+   */
+  async canClockInByCedula(userCedula: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeByCedula(userCedula);
+    // Puede marcar entrada si: nunca marcó hoy O el último fue salida
+    return lastType === null || lastType === 'clock_out';
+  },
+
+  /**
+   * Check if user can clock out by cédula
+   * Considera marcajes de todos los dispositivos
+   */
+  async canClockOutByCedula(userCedula: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeByCedula(userCedula);
+    // Puede marcar salida si: el último fue entrada
+    return lastType === 'clock_in';
+  },
+
   /**
    * Get pending sync count
    */

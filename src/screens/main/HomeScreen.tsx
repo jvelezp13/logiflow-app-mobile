@@ -18,7 +18,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@hooks/useAuth';
 import { useLocation } from '@hooks/useLocation';
+import { checkNetworkStatus } from '@hooks/useNetworkStatus';
 import { attendanceService } from '@services/attendance';
+import { syncService } from '@services/sync/sync.service';
 import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
@@ -144,12 +146,12 @@ export const HomeScreen: React.FC = () => {
    * Load initial data when user is available
    */
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && user?.cedula) {
       console.log('[HomeScreen] User available, loading data');
       loadData();
       loadRoleConfig();
     }
-  }, [user?.id]); // Re-run when user becomes available
+  }, [user?.id, user?.cedula]); // Re-run when user becomes available
 
   /**
    * Load role configuration for special hours warnings
@@ -169,22 +171,35 @@ export const HomeScreen: React.FC = () => {
 
   /**
    * Load today's records and check clock state
+   * IMPORTANTE: Hace pull de Supabase primero para detectar marcajes de otros dispositivos
    */
   const loadData = async () => {
-    if (!user?.id) {
-      console.log('[HomeScreen] No user ID, skipping loadData');
+    if (!user?.id || !user?.cedula) {
+      console.log('[HomeScreen] No user data, skipping loadData');
       return;
     }
 
     try {
-      console.log('[HomeScreen] Loading data for user:', user.id);
+      console.log('[HomeScreen] Loading data for user:', { id: user.id, cedula: user.cedula });
       setIsLoading(true);
 
-      // Check what actions are available
+      // 1. PULL de Supabase si hay conexión (detecta marcajes de otros dispositivos)
+      const hasNetwork = await checkNetworkStatus();
+      if (hasNetwork) {
+        try {
+          const pullResult = await syncService.pullFromSupabase(user.cedula);
+          console.log('[HomeScreen] Pull from Supabase completed:', pullResult);
+        } catch (pullError) {
+          console.log('[HomeScreen] Pull failed, using local data:', pullError);
+          // Continúa con datos locales si el pull falla
+        }
+      }
+
+      // 2. Consultar por CÉDULA (no userId) para detectar marcajes de cualquier dispositivo
       const [canIn, canOut, records, syncCount] = await Promise.all([
-        attendanceService.canClockIn(user.id),
-        attendanceService.canClockOut(user.id),
-        attendanceService.getTodayRecords(user.id),
+        attendanceService.canClockInByCedula(user.cedula),
+        attendanceService.canClockOutByCedula(user.cedula),
+        attendanceService.getTodayRecordsByCedula(user.cedula),
         attendanceService.getPendingSyncCount(),
       ]);
 
