@@ -1,5 +1,6 @@
 import { supabase } from './supabase/client';
 import * as Location from 'expo-location';
+import { obtenerTenantIdRequerido } from '../utils/tenant.utils';
 
 // =====================================================
 // TIPOS
@@ -114,6 +115,9 @@ class NovedadesService {
         throw new Error('No se pudo obtener información del perfil');
       }
 
+      // Obtener tenant_id (requerido por RLS)
+      const tenantId = await obtenerTenantIdRequerido();
+
       // Determinar marcaje_id
       let marcajeId = data.marcaje_id;
 
@@ -144,6 +148,7 @@ class NovedadesService {
         marcaje_id: marcajeId || null,
         hora_nueva: data.hora_nueva,
         hora_real: data.hora_real,
+        tenant_id: tenantId,
       };
 
       // Insertar en la base de datos
