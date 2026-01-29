@@ -80,4 +80,14 @@ export const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     lineHeight: 20,
   },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+    marginTop: SPACING.md,
+  },
+  versionText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
 });

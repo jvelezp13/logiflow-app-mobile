@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { View, Text, Alert, ScrollView, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import type { MainTabScreenProps } from '@/types/navigation.types';
 import { useAuth } from '@hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
@@ -152,6 +153,13 @@ export const SettingsScreen: React.FC<Props> = () => {
           loading={isLoading}
           variant="danger"
         />
+      </View>
+
+      {/* App Version */}
+      <View style={styles.versionContainer}>
+        <Text style={styles.versionText}>
+          LogiFlow Marcaje v{Constants.expoConfig?.version || '2.0.0'}
+        </Text>
       </View>
       </ScrollView>
     </SafeAreaView>
