@@ -36,12 +36,14 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '@/constants/theme';
 type RouteParams = RouteProp<CierresStackParamList, 'DetalleCierre'>;
 
 /**
- * Format decimal hours to "8h 30m"
+ * Format decimal hours to "8h 30m" or "15m" when hours is 0
  */
 const formatHoras = (horas: number): string => {
   const h = Math.floor(horas);
   const m = Math.round((horas - h) * 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (h === 0 && m > 0) return `${m}m`;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  return `${h}h`;
 };
 
 /**
@@ -155,12 +157,21 @@ const DiaCierreRow = memo(({
           {format(fechaDate, 'd MMM', { locale: es })}
         </Text>
       </View>
-      <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
-        {formatTime(dia.entrada)}
-      </Text>
-      <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
-        {formatTime(dia.salida)}
-      </Text>
+      <View style={styles.diaHoraContainer}>
+        <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
+          {formatTime(dia.entrada)}
+        </Text>
+        {dia.jornadas && dia.jornadas > 1 && (
+          <Text style={styles.jornadasIndicator}>
+            ({dia.jornadas} jornadas)
+          </Text>
+        )}
+      </View>
+      <View style={styles.diaHoraContainer}>
+        <Text style={[styles.diaHora, isDescanso && styles.diaDescansoText]}>
+          {formatTime(dia.salida)}
+        </Text>
+      </View>
       <Text style={[styles.diaTotal, isDescanso && styles.diaDescansoText]}>
         {formatHoras(dia.horas_netas)}
       </Text>
@@ -866,11 +877,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
   },
-  diaHora: {
+  diaHoraContainer: {
     flex: 1,
+    alignItems: 'center',
+  },
+  diaHora: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     textAlign: 'center',
+  },
+  jornadasIndicator: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
   diaTotal: {
     flex: 1,

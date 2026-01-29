@@ -20,13 +20,6 @@ const CierreStatusBadge: React.FC<CierreStatusBadgeProps> = ({
 }) => {
   const getEstadoConfig = () => {
     switch (estado) {
-      case 'borrador':
-        return {
-          label: 'Borrador',
-          backgroundColor: '#F3F4F6',
-          textColor: '#6B7280',
-          icon: 'file-edit-outline' as keyof typeof MaterialCommunityIcons.glyphMap,
-        };
       case 'publicado':
         return {
           label: 'Pendiente',

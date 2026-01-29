@@ -7,7 +7,7 @@
 /**
  * Estado del cierre semanal
  */
-export type EstadoCierre = 'borrador' | 'publicado' | 'confirmado' | 'objetado' | 'vencido';
+export type EstadoCierre = 'publicado' | 'confirmado' | 'objetado' | 'vencido';
 
 /**
  * Detalle de un día dentro del cierre
@@ -21,6 +21,7 @@ export interface DiaCierre {
   horas_netas: number;
   horas_exceso: number;
   horas_nocturnas: number;
+  jornadas?: number; // Cantidad de jornadas (pares entrada/salida) en el día
   observaciones: string[]; // ['ausente', 'exceso', 'nocturno', 'ajustado']
 }
 

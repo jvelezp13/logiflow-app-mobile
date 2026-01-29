@@ -50,7 +50,7 @@ interface CierreRow {
 
 class CierresService {
   /**
-   * Obtiene todos los cierres del empleado (excepto borradores)
+   * Obtiene todos los cierres del empleado
    */
   async obtenerCierres(cedula: string): Promise<CierreResumen[]> {
     // Use type assertion since table is not in generated types
@@ -65,7 +65,6 @@ class CierresService {
         publicado_at
       `)
       .eq('cedula', cedula)
-      .neq('estado', 'borrador')
       .order('semana_inicio', { ascending: false })
       .limit(4) as unknown as Promise<{
         data: CierreRow[] | null;
@@ -166,8 +165,7 @@ class CierresService {
     const { data, error } = await (supabase
       .from('cierres_semanales' as never)
       .select('estado')
-      .eq('cedula', cedula)
-      .neq('estado', 'borrador') as unknown as Promise<{
+      .eq('cedula', cedula) as unknown as Promise<{
         data: { estado: string }[] | null;
         error: Error | null;
       }>);
