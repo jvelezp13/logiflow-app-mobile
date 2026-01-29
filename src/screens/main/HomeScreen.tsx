@@ -562,8 +562,8 @@ export const HomeScreen: React.FC = () => {
                   !isInProgress && styles.workedHoursLabelCompleted
                 ]}>
                   {isInProgress
-                    ? `Horas trabajadas${showNetLabel ? ' (netas)' : ''} - en curso`
-                    : `Hoy trabajaste${showNetLabel ? ' (neto)' : ''}`
+                    ? `Horas registradas${showNetLabel ? ' (netas)' : ''} - en curso`
+                    : `Hoy registraste${showNetLabel ? ' (neto)' : ''}`
                   }
                 </Text>
                 <Text style={[

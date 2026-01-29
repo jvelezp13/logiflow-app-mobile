@@ -456,7 +456,7 @@ export const DetalleCierreScreen: React.FC = () => {
               <Text style={styles.totalValue}>
                 {formatHoras(datos_semana.totales.horas_trabajadas)}
               </Text>
-              <Text style={styles.totalLabel}>Trabajadas</Text>
+              <Text style={styles.totalLabel}>Registradas</Text>
             </View>
             {datos_semana.totales.horas_extra > 0 && (
               <View style={styles.totalItem}>

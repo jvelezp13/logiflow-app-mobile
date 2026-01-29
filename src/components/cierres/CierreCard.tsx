@@ -81,7 +81,7 @@ const CierreCardComponent: React.FC<CierreCardProps> = ({ cierre, onPress }) => 
         <View style={styles.statItem}>
           <MaterialCommunityIcons name="clock-outline" size={18} color="#6B7280" />
           <Text style={styles.statValue}>{formatHoras(cierre.horas_trabajadas)}</Text>
-          <Text style={styles.statLabel}>trabajadas</Text>
+          <Text style={styles.statLabel}>registradas</Text>
         </View>
       </View>
 
