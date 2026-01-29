@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   horasRegistradasValue: {
-    fontSize: 36,
+    fontSize: 24,
     fontWeight: '700',
     color: COLORS.text,
   },
