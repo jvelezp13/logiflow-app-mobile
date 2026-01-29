@@ -30,6 +30,8 @@ export const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
     color: COLORS.text,
     flex: 1,
+    minWidth: 60,
+    flexShrink: 0,
   },
   time: {
     fontSize: FONT_SIZES.md,
