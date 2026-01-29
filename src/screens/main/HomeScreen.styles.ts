@@ -65,21 +65,70 @@ export const styles = StyleSheet.create({
   clockButton: {
     minHeight: 60,
   },
-  statusSection: {
-    marginTop: SPACING.xl,
-    padding: SPACING.md,
+  clockButtonMain: {
+    minHeight: 70,
+    width: '100%',
+  },
+  // Banner de estado prominente
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.lg,
+    width: '100%',
+  },
+  statusBannerWorking: {
+    backgroundColor: '#DCFCE7', // Verde claro
+    borderWidth: 1,
+    borderColor: '#22C55E',
+  },
+  statusBannerIdle: {
+    backgroundColor: COLORS.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statusBannerIcon: {
+    fontSize: 32,
+    marginRight: SPACING.md,
+  },
+  statusBannerIconWorking: {
+    // Sin cambios adicionales
+  },
+  statusBannerIconIdle: {
+    // Sin cambios adicionales
+  },
+  statusBannerTextContainer: {
+    flex: 1,
+  },
+  statusBannerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  statusBannerTitleWorking: {
+    color: '#166534', // Verde oscuro
+  },
+  statusBannerTitleIdle: {
+    color: COLORS.text,
+  },
+  statusBannerSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  // Estado jornada completada
+  dayCompleteContainer: {
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     backgroundColor: COLORS.surfaceSecondary,
     borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
   },
-  statusTitle: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  statusText: {
+  dayCompleteText: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.text,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.textSecondary,
   },
   todayRecords: {
     marginTop: SPACING.lg,
@@ -156,5 +205,18 @@ export const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
     fontStyle: 'italic',
+  },
+  // Estilos para resumen del dia (jornada completada)
+  workedHoursContainerCompleted: {
+    backgroundColor: COLORS.surfaceSecondary,
+    paddingVertical: SPACING.sm,
+  },
+  workedHoursLabelCompleted: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  workedHoursValueCompleted: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.text,
   },
 });

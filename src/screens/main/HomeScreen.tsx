@@ -36,24 +36,36 @@ import { COLORS } from '@/constants/theme';
 
 /**
  * Memoized Clock Component
- * Updates independently every second without causing parent re-renders.
- * OPTIMIZATION: Extracted to prevent full screen re-render each second.
+ * Updates independently without causing parent re-renders.
+ * OPTIMIZATION: Muestra segundos solo cuando esta trabajando (feedback de tiempo activo)
+ * Cuando no trabaja, actualiza cada minuto para ahorrar recursos.
  */
-const ClockDisplay = memo(() => {
+type ClockDisplayProps = {
+  isWorking?: boolean;
+};
+
+const ClockDisplay = memo(({ isWorking = false }: ClockDisplayProps) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
+    // Segundos solo cuando trabaja, minutos cuando no
+    const intervalMs = isWorking ? 1000 : 60000;
+
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-    }, 1000);
+    }, intervalMs);
+
+    // Actualizar inmediatamente al cambiar de modo
+    setCurrentTime(new Date());
+
     return () => clearInterval(interval);
-  }, []);
+  }, [isWorking]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('es-CO', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
+      ...(isWorking && { second: '2-digit' }), // Segundos solo si trabaja
       hour12: true,
     });
   };
@@ -514,7 +526,7 @@ export const HomeScreen: React.FC = () => {
         {/* Clock Section */}
         <View style={styles.clockSection}>
           {/* Current Time - Memoized component */}
-          <ClockDisplay />
+          <ClockDisplay isWorking={canClockOut} />
 
           {/* Worked Hours Summary - only show if there are records */}
           {todayRecords.length > 0 && (() => {
@@ -526,14 +538,26 @@ export const HomeScreen: React.FC = () => {
             const showNetLabel = roleConfig && roleConfig.minutosDescanso > 0;
 
             return (
-              <View style={styles.workedHoursContainerTop}>
-                <Text style={styles.workedHoursLabelTop}>
-                  Horas trabajadas{showNetLabel ? ' (netas)' : ''}{isInProgress ? ' - en curso' : ''}
+              <View style={[
+                styles.workedHoursContainerTop,
+                !isInProgress && styles.workedHoursContainerCompleted
+              ]}>
+                <Text style={[
+                  styles.workedHoursLabelTop,
+                  !isInProgress && styles.workedHoursLabelCompleted
+                ]}>
+                  {isInProgress
+                    ? `Horas trabajadas${showNetLabel ? ' (netas)' : ''} - en curso`
+                    : `Hoy trabajaste${showNetLabel ? ' (neto)' : ''}`
+                  }
                 </Text>
-                <Text style={styles.workedHoursValueTop}>
+                <Text style={[
+                  styles.workedHoursValueTop,
+                  !isInProgress && styles.workedHoursValueCompleted
+                ]}>
                   {formatWorkedHours(netHours)}
                 </Text>
-                {showNetLabel && (
+                {showNetLabel && isInProgress && (
                   <Text style={styles.workedHoursSubtext}>
                     Descanso: {roleConfig.minutosDescanso} min descontados
                   </Text>
@@ -542,39 +566,75 @@ export const HomeScreen: React.FC = () => {
             );
           })()}
 
-          {/* Clock Buttons */}
+          {/* Estado Banner - Feedback visual claro */}
+          {!isLoading && (
+            <View style={[
+              styles.statusBanner,
+              canClockOut ? styles.statusBannerWorking : styles.statusBannerIdle
+            ]}>
+              <Text style={[
+                styles.statusBannerIcon,
+                canClockOut ? styles.statusBannerIconWorking : styles.statusBannerIconIdle
+              ]}>
+                {canClockOut ? '⏱️' : '☀️'}
+              </Text>
+              <View style={styles.statusBannerTextContainer}>
+                <Text style={[
+                  styles.statusBannerTitle,
+                  canClockOut ? styles.statusBannerTitleWorking : styles.statusBannerTitleIdle
+                ]}>
+                  {canClockOut ? 'Trabajando' : 'Listo para iniciar'}
+                </Text>
+                {canClockOut && todayRecords.length > 0 && (() => {
+                  // Buscar la ultima entrada
+                  const lastClockIn = [...todayRecords]
+                    .filter(r => r.attendanceType === 'clock_in')
+                    .sort((a, b) => b.timestamp - a.timestamp)[0];
+                  return lastClockIn ? (
+                    <Text style={styles.statusBannerSubtitle}>
+                      Desde las {lastClockIn.formattedTime}
+                    </Text>
+                  ) : null;
+                })()}
+                {!canClockOut && !canClockIn && (
+                  <Text style={styles.statusBannerSubtitle}>
+                    Jornada completada
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Boton principal - Solo el relevante */}
           {isLoading ? (
             <ActivityIndicator size="large" />
           ) : (
             <View style={styles.buttonsContainer}>
-              <Button
-                title="Marcar Entrada"
-                onPress={handleClockIn}
-                disabled={!canClockIn || isProcessing}
-                variant="clockIn"
-                style={styles.clockButton}
-              />
-              <Button
-                title="Marcar Salida"
-                onPress={handleClockOut}
-                disabled={!canClockOut || isProcessing}
-                variant="clockOut"
-                style={styles.clockButton}
-              />
+              {canClockIn && (
+                <Button
+                  title="Marcar Entrada"
+                  onPress={handleClockIn}
+                  disabled={isProcessing}
+                  variant="clockIn"
+                  style={styles.clockButtonMain}
+                />
+              )}
+              {canClockOut && (
+                <Button
+                  title="Marcar Salida"
+                  onPress={handleClockOut}
+                  disabled={isProcessing}
+                  variant="clockOut"
+                  style={styles.clockButtonMain}
+                />
+              )}
+              {!canClockIn && !canClockOut && (
+                <View style={styles.dayCompleteContainer}>
+                  <Text style={styles.dayCompleteText}>Jornada completada</Text>
+                </View>
+              )}
             </View>
           )}
-
-          {/* Status */}
-          <View style={styles.statusSection}>
-            <Text style={styles.statusTitle}>Estado actual:</Text>
-            <Text style={styles.statusText}>
-              {canClockOut
-                ? '✓ Entrada registrada'
-                : canClockIn
-                  ? 'Pendiente de entrada'
-                  : 'Salida registrada'}
-            </Text>
-          </View>
         </View>
 
         {/* Today's Records */}
