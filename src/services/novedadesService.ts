@@ -1,6 +1,7 @@
 import { supabase } from './supabase/client';
 import * as Location from 'expo-location';
 import { obtenerTenantIdRequerido } from '../utils/tenant.utils';
+import { startOfWeek, format, parseISO } from 'date-fns';
 
 // =====================================================
 // TIPOS
@@ -56,6 +57,12 @@ export interface AjusteMarcajeData {
   motivo: string;
 }
 
+export interface AjusteMarcajeResult {
+  success: boolean;
+  novedad?: Novedad;
+  error?: string;
+}
+
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
   ajuste_marcaje: 'Ajuste de marcaje',
 };
@@ -94,14 +101,15 @@ class NovedadesService {
   /**
    * Crea una solicitud de ajuste de marcaje
    * Si no se proporciona marcaje_id, busca el marcaje por timestamp_local
+   * Valida que la semana no tenga un cierre confirmado o vencido
    */
-  async crearAjusteMarcaje(data: AjusteMarcajeData): Promise<Novedad | null> {
+  async crearAjusteMarcaje(data: AjusteMarcajeData): Promise<AjusteMarcajeResult> {
     try {
       // Obtener usuario actual
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        throw new Error('Usuario no autenticado');
+        return { success: false, error: 'Usuario no autenticado' };
       }
 
       // Obtener datos del perfil
@@ -112,7 +120,28 @@ class NovedadesService {
         .single() as { data: { cedula: string; nombre: string } | null; error: unknown };
 
       if (profileError || !profile) {
-        throw new Error('No se pudo obtener información del perfil');
+        return { success: false, error: 'No se pudo obtener información del perfil' };
+      }
+
+      // Validar que la semana no tenga cierre confirmado o vencido
+      const fechaMarcaje = parseISO(data.fecha);
+      const inicioSemana = startOfWeek(fechaMarcaje, { weekStartsOn: 1 }); // Lunes
+      const semanaInicioStr = format(inicioSemana, 'yyyy-MM-dd');
+
+      const { data: cierreExistente } = await supabase
+        .from('cierres_semanales')
+        .select('estado')
+        .eq('cedula', profile.cedula)
+        .eq('semana_inicio', semanaInicioStr)
+        .in('estado', ['confirmado', 'vencido'])
+        .maybeSingle() as { data: { estado: string } | null; error: unknown };
+
+      if (cierreExistente) {
+        const estadoTexto = cierreExistente.estado === 'confirmado' ? 'confirmado' : 'vencido';
+        return {
+          success: false,
+          error: `No puedes solicitar ajustes para esta semana porque el cierre ya está ${estadoTexto}.`
+        };
       }
 
       // Obtener tenant_id (requerido por RLS)
@@ -160,13 +189,13 @@ class NovedadesService {
 
       if (error) {
         console.error('Error creando ajuste de marcaje:', error);
-        throw error;
+        return { success: false, error: 'Error al crear la solicitud' };
       }
 
-      return novedad as Novedad;
+      return { success: true, novedad: novedad as Novedad };
     } catch (error) {
       console.error('Error en crearAjusteMarcaje:', error);
-      return null;
+      return { success: false, error: 'Error inesperado al crear la solicitud' };
     }
   }
 

@@ -105,7 +105,7 @@ export const SolicitarAjusteScreen: React.FC = () => {
         motivo: trimmedMotivo,
       });
 
-      if (result) {
+      if (result.success) {
         Alert.alert(
           'Solicitud enviada',
           'Tu solicitud de ajuste ha sido enviada. Un administrador la revisará.',
@@ -114,7 +114,7 @@ export const SolicitarAjusteScreen: React.FC = () => {
       } else {
         Alert.alert(
           'Error',
-          'No se pudo enviar la solicitud. Por favor intenta nuevamente.'
+          result.error || 'No se pudo enviar la solicitud. Por favor intenta nuevamente.'
         );
       }
     } catch (error) {
