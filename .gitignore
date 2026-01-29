@@ -44,3 +44,6 @@ yarn-error.*
 # Keystore files (DO NOT COMMIT)
 *.keystore
 keystore.properties
+
+# MCP configuration (contains tokens)
+.mcp.json

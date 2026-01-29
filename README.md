@@ -2,11 +2,15 @@
 
 Aplicación móvil React Native para registro de asistencia de empleados con funcionalidad offline-first.
 
-> **Para Claude:** Ver [CLAUDE-CONTEXT.md](./CLAUDE-CONTEXT.md) para contexto rápido del proyecto.
+## Funcionalidades
 
-## 🎯 Objetivo
-
-Reemplazar completamente a Bixpe permitiendo a los empleados marcar entrada/salida directamente desde sus dispositivos móviles, eliminando la necesidad de scraping y procesos ETL manuales.
+- Marcaje de entrada/salida con foto selfie
+- Funcionamiento offline con sincronización automática
+- Modo Kiosco para dispositivos compartidos (login con PIN)
+- Historial de marcajes
+- Solicitud de novedades/ajustes
+- Visualización de cierres semanales
+- Notificaciones de recordatorio
 
 ## 📱 Stack Tecnológico
 
@@ -316,7 +320,6 @@ Para dudas sobre el proyecto, revisar:
 
 ---
 
-**Versión:** 1.0.0
-**Estado:** Fase 2 Completada ✅ (Autenticación funcional)
-**Backend:** Supabase Local (Desarrollo)
-**Próximo Objetivo:** Fase 3 - Captura de Cámara
+**Version:** 2.0.0
+**Estado:** Produccion
+**Backend:** Supabase
