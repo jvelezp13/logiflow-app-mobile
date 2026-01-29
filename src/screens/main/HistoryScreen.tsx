@@ -80,8 +80,8 @@ export const HistoryScreen: React.FC = () => {
       });
     } else {
       // No novedad - navigate to adjustment request form
-      // Usar record.time (formato 24h HH:mm) en lugar de formattedTime (puede ser 12h)
-      const horaActual = record.time;
+      // Usar record.time (formato 24h HH:mm:ss) y extraer solo HH:mm
+      const horaActual = record.time.slice(0, 5);
 
       navigation.navigate('Novedades', {
         screen: 'SolicitarAjuste',
