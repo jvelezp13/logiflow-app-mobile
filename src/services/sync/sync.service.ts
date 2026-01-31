@@ -132,26 +132,48 @@ export const syncService = {
   },
 
   /**
-   * Upload photo via Edge Function (for kiosk mode)
+   * Upload photo AND insert record via Edge Function (for kiosk mode)
    * Uses PIN-based authentication instead of user session
+   * The Edge Function handles both photo upload AND database INSERT using service_role
    *
-   * @param recordId - Attendance record ID
-   * @param photoBase64 - Base64 encoded photo
-   * @param userId - User ID
+   * @param record - Full attendance record
    * @param pin - 4-digit PIN code
-   * @returns Photo URL or null
+   * @returns Object with photoUrl and whether record was inserted, or null on error
    */
-  async uploadPhotoViaEdgeFunction(
-    recordId: string,
-    photoBase64: string,
-    userId: string,
+  async uploadAndInsertViaEdgeFunction(
+    record: AttendanceRecord,
     pin: string
-  ): Promise<string | null> {
+  ): Promise<{ photoUrl: string; recordInserted: boolean } | null> {
     try {
-      console.log('[SyncService] Uploading photo via Edge Function (kiosk mode)');
+      console.log('[SyncService] Uploading photo AND inserting record via Edge Function (kiosk mode)');
 
       // Get Supabase anon key for authorization
       const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+      // Obtener tenant_id: primero del registro local, luego del store
+      const tenantId = record.tenantId || getTenantId();
+
+      if (!tenantId) {
+        console.error('[SyncService] Cannot sync kiosk record without tenant_id');
+        return null;
+      }
+
+      // Preparar datos del registro para INSERT
+      const recordData = {
+        empleado: record.userName,
+        cedula: record.userCedula,
+        fecha: record.date,
+        hora_inicio_decimal:
+          record.attendanceType === 'clock_in' ? record.timeDecimal : null,
+        hora_fin_decimal:
+          record.attendanceType === 'clock_out' ? record.timeDecimal : null,
+        observaciones: record.observations || null,
+        latitud: record.latitude || null,
+        longitud: record.longitude || null,
+        tipo_marcaje: record.attendanceType,
+        timestamp_local: record.timestamp,
+        tenant_id: tenantId,
+      };
 
       // Call Edge Function con timeout y retry
       const response = await fetchWithRetry(
@@ -165,9 +187,10 @@ export const syncService = {
           },
           body: JSON.stringify({
             pin,
-            photoBase64,
-            userId,
-            recordId,
+            photoBase64: record.photoBase64,
+            userId: record.userId,
+            recordId: record.id,
+            recordData, // Datos completos para INSERT
           }),
         },
         {
@@ -185,14 +208,20 @@ export const syncService = {
       const result = await response.json();
 
       if (result.success && result.photoUrl) {
-        console.log('[SyncService] Photo uploaded successfully via Edge Function');
-        return result.photoUrl;
+        console.log('[SyncService] Photo uploaded and record inserted via Edge Function:', {
+          photoUrl: result.photoUrl,
+          recordInserted: result.recordInserted,
+        });
+        return {
+          photoUrl: result.photoUrl,
+          recordInserted: result.recordInserted === true,
+        };
       } else {
         console.error('[SyncService] Edge Function returned no URL:', result);
         return null;
       }
     } catch (error) {
-      console.error('[SyncService] Upload photo via Edge Function error:', error);
+      console.error('[SyncService] Upload via Edge Function error:', error);
       return null;
     }
   },
@@ -373,28 +402,36 @@ export const syncService = {
       }
 
       let photoUrl: string | undefined;
+      let recordAlreadyInserted = false;
 
       // Upload photo if needed
       if (record.needsPhotoUpload && record.photoBase64) {
         console.log('[SyncService] Uploading photo for record:', record.id);
 
         // Check if kiosk mode using PIN from record (persisted during creation)
-        const hasKioskPin = !!record.kioskPin;
+        const hasKioskPinForUpload = !!record.kioskPin;
 
         console.log('[SyncService] Checking upload mode:', {
-          hasKioskPin,
+          hasKioskPin: hasKioskPinForUpload,
           recordId: record.id,
         });
 
-        if (hasKioskPin && record.kioskPin) {
-          // Use Edge Function for kiosk mode
-          console.log('[SyncService] Using Edge Function for kiosk mode upload');
-          photoUrl = (await this.uploadPhotoViaEdgeFunction(
-            record.id,
-            record.photoBase64,
-            record.userId,
+        if (hasKioskPinForUpload && record.kioskPin) {
+          // Use Edge Function for kiosk mode - this also inserts the record
+          console.log('[SyncService] Using Edge Function for kiosk mode (photo + INSERT)');
+          const edgeResult = await this.uploadAndInsertViaEdgeFunction(
+            record,
             record.kioskPin
-          )) || undefined;
+          );
+
+          if (edgeResult) {
+            photoUrl = edgeResult.photoUrl;
+            recordAlreadyInserted = edgeResult.recordInserted;
+            console.log('[SyncService] Edge Function result:', {
+              photoUrl,
+              recordAlreadyInserted,
+            });
+          }
         } else {
           // Use direct upload for authenticated mode
           console.log('[SyncService] Using direct upload for authenticated mode');
@@ -422,17 +459,21 @@ export const syncService = {
         photoUrl = record.photoUrl;
       }
 
-      // Sync record to Supabase
-      console.log('[SyncService] Syncing record to Supabase:', record.id);
+      // Sync record to Supabase (only if Edge Function didn't already insert it)
+      if (!recordAlreadyInserted) {
+        console.log('[SyncService] Syncing record to Supabase:', record.id);
 
-      const syncSuccess = await this.syncRecord(record, photoUrl);
+        const syncSuccess = await this.syncRecord(record, photoUrl);
 
-      if (!syncSuccess) {
-        return {
-          success: false,
-          recordId: record.id,
-          error: 'Error al sincronizar datos',
-        };
+        if (!syncSuccess) {
+          return {
+            success: false,
+            recordId: record.id,
+            error: 'Error al sincronizar datos',
+          };
+        }
+      } else {
+        console.log('[SyncService] Record already inserted by Edge Function, skipping syncRecord');
       }
 
       // Mark as synced
