@@ -250,16 +250,20 @@ export const attendanceRecordService = {
   /**
    * Get pending sync records
    * OPTIMIZED: Query only pending/error/syncing records directly (no debug fetch)
+   * Excluye registros con demasiados intentos (huérfanos o fallidos permanentes)
    */
   async getPendingSync(): Promise<AttendanceRecord[]> {
     try {
       const records = await database
         .get<AttendanceRecord>('attendance_records')
         .query(
-          Q.or(
-            Q.where('sync_status', 'pending'),
-            Q.where('sync_status', 'error'),
-            Q.where('sync_status', 'syncing')
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.where('sync_attempts', Q.lt(10)) // Excluir registros huérfanos (>=10 intentos)
           ),
           Q.sortBy('timestamp', Q.asc)
         )
@@ -323,6 +327,24 @@ export const attendanceRecordService = {
       });
     } catch (error) {
       console.error('[AttendanceRecordService] Mark as sync error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Marca un registro como huérfano (sin credenciales válidas para sincronizar)
+   * Estos registros no se reintentan automáticamente
+   */
+  async markAsOrphan(recordId: string): Promise<void> {
+    try {
+      await this.update(recordId, {
+        syncStatus: 'error',
+        syncError: 'ORPHAN: Sin credenciales válidas para sincronizar',
+        syncAttempts: 999, // Marca máxima para no reintentar
+      });
+      console.log('[AttendanceRecordService] Registro marcado como huérfano:', recordId);
+    } catch (error) {
+      console.error('[AttendanceRecordService] Mark as orphan error:', error);
       throw error;
     }
   },
@@ -654,6 +676,38 @@ export const attendanceRecordService = {
       return oldRecords.length;
     } catch (error) {
       console.error('[AttendanceRecordService] Cleanup error:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Limpia registros huérfanos (sin credenciales válidas para sincronizar)
+   * Estos registros tienen sync_attempts >= 10 y no pueden recuperarse
+   */
+  async cleanupOrphanedRecords(): Promise<number> {
+    try {
+      const orphaned = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.where('sync_status', 'error'),
+          Q.where('sync_attempts', Q.gte(10))
+        )
+        .fetch();
+
+      if (orphaned.length === 0) {
+        return 0;
+      }
+
+      console.log(`[AttendanceRecordService] Eliminando ${orphaned.length} registros huérfanos`);
+
+      await database.write(async () => {
+        await Promise.all(orphaned.map((record) => record.markAsDeleted()));
+      });
+
+      console.log(`[AttendanceRecordService] Limpieza de huérfanos completada: ${orphaned.length} eliminados`);
+      return orphaned.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Cleanup orphaned error:', error);
       return 0;
     }
   },

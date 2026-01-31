@@ -349,6 +349,29 @@ export const syncService = {
         };
       }
 
+      // Validar si el registro tiene credenciales válidas para sincronizar
+      // - Modo normal: requiere sesión de Supabase activa
+      // - Modo kiosco: requiere kioskPin guardado en el registro
+      const supabaseSession = await supabase.auth.getSession();
+      const hasActiveSession = !!supabaseSession.data.session;
+      const hasKioskPin = !!record.kioskPin;
+
+      // Si no hay sesión ni PIN, es un registro huérfano (no recuperable)
+      if (!hasActiveSession && !hasKioskPin) {
+        console.error('[SyncService] Registro huérfano detectado: sin sesión ni PIN', {
+          recordId: record.id,
+          date: record.date,
+          time: record.time,
+          syncAttempts: record.syncAttempts,
+        });
+        await attendanceRecordService.markAsOrphan(record.id);
+        return {
+          success: false,
+          recordId: record.id,
+          error: 'ORPHAN: Sin credenciales válidas para sincronizar',
+        };
+      }
+
       let photoUrl: string | undefined;
 
       // Upload photo if needed
