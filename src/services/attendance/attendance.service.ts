@@ -393,15 +393,56 @@ export const attendanceService = {
   /**
    * Get last clock type from Supabase (cloud)
    * Used by kiosk mode to check status across devices
+   *
+   * @param userCedula - Cedula del usuario
+   * @param tenantId - (Opcional) Tenant ID para modo kiosco. Si se pasa, usa RPC SECURITY DEFINER
    */
-  async getLastClockTypeFromCloud(userCedula: string): Promise<AttendanceType | null> {
+  async getLastClockTypeFromCloud(
+    userCedula: string,
+    tenantId?: string
+  ): Promise<AttendanceType | null> {
     try {
       const today = new Date();
       const todayStr = format(today, 'yyyy-MM-dd');
 
+      // Si tenemos tenant_id, usar la RPC (modo kiosco sin sesion autenticada)
+      if (tenantId) {
+        console.log('[AttendanceService] Using RPC for kiosk mode:', {
+          userCedula,
+          todayStr,
+          tenantId,
+        });
+
+        // Tipo para el resultado de la RPC
+        type RpcResult = { tipo_marcaje: string; timestamp_local: number };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (supabase.rpc as any)('get_attendance_status_by_cedula', {
+          p_cedula: userCedula,
+          p_fecha: todayStr,
+          p_tenant_id: tenantId,
+        });
+
+        const rpcData = result.data as RpcResult[] | null;
+        const rpcError = result.error;
+
+        if (rpcError) {
+          console.error('[AttendanceService] RPC error:', rpcError);
+          return null;
+        }
+
+        if (!rpcData || rpcData.length === 0) {
+          console.log('[AttendanceService] No records from RPC');
+          return null;
+        }
+
+        console.log('[AttendanceService] RPC result:', rpcData[0]);
+        return rpcData[0].tipo_marcaje as AttendanceType;
+      }
+
+      // Fallback: consulta directa (modo normal con sesion autenticada)
       console.log('[AttendanceService] Checking cloud status for:', { userCedula, todayStr });
 
-      // Query Supabase for today's records for this user
       const { data, error } = await supabase
         .from('horarios_registros_diarios')
         .select('tipo_marcaje, timestamp_local')
@@ -433,9 +474,12 @@ export const attendanceService = {
   /**
    * Check if user can clock in (from cloud)
    * Used by kiosk mode
+   *
+   * @param userCedula - Cedula del usuario
+   * @param tenantId - (Opcional) Tenant ID para modo kiosco
    */
-  async canClockInFromCloud(userCedula: string): Promise<boolean> {
-    const lastType = await this.getLastClockTypeFromCloud(userCedula);
+  async canClockInFromCloud(userCedula: string, tenantId?: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeFromCloud(userCedula, tenantId);
     // Can clock in if: never clocked today OR last was clock_out
     return lastType === null || lastType === 'clock_out';
   },
@@ -443,9 +487,12 @@ export const attendanceService = {
   /**
    * Check if user can clock out (from cloud)
    * Used by kiosk mode
+   *
+   * @param userCedula - Cedula del usuario
+   * @param tenantId - (Opcional) Tenant ID para modo kiosco
    */
-  async canClockOutFromCloud(userCedula: string): Promise<boolean> {
-    const lastType = await this.getLastClockTypeFromCloud(userCedula);
+  async canClockOutFromCloud(userCedula: string, tenantId?: string): Promise<boolean> {
+    const lastType = await this.getLastClockTypeFromCloud(userCedula, tenantId);
     // Can clock out if: last was clock_in
     return lastType === 'clock_in';
   },
