@@ -10,6 +10,12 @@ App móvil React Native (Expo SDK 54) para registro de asistencia de empleados. 
 - **Modo Normal:** Usuario autenticado con email/contraseña
 - **Modo Kiosco:** Múltiples usuarios con PIN en dispositivo compartido
 
+## Descargas
+
+**GitHub Releases:** https://github.com/jvelezp13/logiflow-app-mobile/releases
+
+El APK se genera con nombre `logiflow-marcaje-{version}.apk`
+
 ## Comandos de Desarrollo
 
 ```bash
@@ -25,7 +31,7 @@ npm run lint                 # ESLint
 # Build producción
 npx expo prebuild --platform android --clean
 cd android && ./gradlew assembleRelease
-# APK: android/app/build/outputs/apk/release/app-release.apk
+# APK: android/app/build/outputs/apk/release/logiflow-marcaje-{version}.apk
 
 # Dispositivo Android
 ~/Library/Android/sdk/platform-tools/adb devices    # Ver dispositivos

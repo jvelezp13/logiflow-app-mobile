@@ -2,6 +2,15 @@
 
 Aplicación móvil React Native para registro de asistencia de empleados con funcionalidad offline-first.
 
+## Descargas
+
+**[Descargar última versión (APK)](https://github.com/jvelezp13/logiflow-app-mobile/releases/latest)**
+
+| Versión | Link |
+|---------|------|
+| Última | [GitHub Releases](https://github.com/jvelezp13/logiflow-app-mobile/releases/latest) |
+| Todas | [Ver todas las versiones](https://github.com/jvelezp13/logiflow-app-mobile/releases) |
+
 ## Funcionalidades
 
 - Marcaje de entrada/salida con foto selfie
@@ -208,7 +217,7 @@ npm start
 **Fase 10: Testing y Build (2 días)**
 - [ ] Testing manual completo
 - [ ] Pruebas offline/online
-- [ ] Build APK con EAS
+- [x] Build APK (genera `logiflow-marcaje-{version}.apk`)
 - [ ] Documentación de usuario
 
 ## 📐 Metodología de Desarrollo
@@ -320,6 +329,6 @@ Para dudas sobre el proyecto, revisar:
 
 ---
 
-**Version:** 2.0.0
+**Version:** 2.0.4
 **Estado:** Produccion
 **Backend:** Supabase
