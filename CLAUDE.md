@@ -163,25 +163,7 @@ El sistema soporta multiples empresas/clientes con aislamiento de datos via RLS.
 
 ## Base de Datos - Acceso via CLI
 
-El proyecto esta enlazado con Supabase CLI (`supabase link`) y tiene `psql` disponible.
-
-```bash
-# Ejecutar SQL contra la base de datos remota
-psql "$(cat supabase/.temp/pooler-url)" -c "TU QUERY AQUI"
-
-# Listar tablas
-psql "$(cat supabase/.temp/pooler-url)" -c "\dt"
-
-# Ver esquema de una tabla
-psql "$(cat supabase/.temp/pooler-url)" -c "\d nombre_tabla"
-
-# Migraciones y schema (Supabase CLI)
-supabase db push          # Aplicar migraciones pendientes
-supabase db pull          # Traer cambios del remoto
-supabase db diff          # Ver diferencias de schema
-supabase migration list   # Listar migraciones
-supabase inspect db       # Estadisticas de la DB
-```
+Acceso a Supabase via `psql` + `supabase` CLI (ver skill `supabase-cli` para referencia completa de comandos).
 
 **IMPORTANTE:** Este proyecto usa cuenta Supabase separada (LogiFlow Fichajes). El CLI usa `SUPABASE_ACCESS_TOKEN` de `.env` automaticamente.
 
