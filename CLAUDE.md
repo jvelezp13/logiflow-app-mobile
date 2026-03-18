@@ -161,17 +161,29 @@ El sistema soporta multiples empresas/clientes con aislamiento de datos via RLS.
 6. **Timestamps UTC:** DB almacena UTC, conversion a hora local solo en UI
 7. **Multi-tenant:** Todos los datos estan aislados por `tenant_id` via RLS
 
-## MCP Supabase
+## Base de Datos - Acceso via CLI
 
-Configurado en `.mcp.json` para ejecutar queries SQL directamente.
+El proyecto esta enlazado con Supabase CLI (`supabase link`) y tiene `psql` disponible.
 
 ```bash
-# Listar tablas
-mcp__supabase__list_tables
+# Ejecutar SQL contra la base de datos remota
+psql "$(cat supabase/.temp/pooler-url)" -c "TU QUERY AQUI"
 
-# Ejecutar SQL
-mcp__supabase__execute_sql query="SELECT * FROM profiles LIMIT 5"
+# Listar tablas
+psql "$(cat supabase/.temp/pooler-url)" -c "\dt"
+
+# Ver esquema de una tabla
+psql "$(cat supabase/.temp/pooler-url)" -c "\d nombre_tabla"
+
+# Migraciones y schema (Supabase CLI)
+supabase db push          # Aplicar migraciones pendientes
+supabase db pull          # Traer cambios del remoto
+supabase db diff          # Ver diferencias de schema
+supabase migration list   # Listar migraciones
+supabase inspect db       # Estadisticas de la DB
 ```
+
+**IMPORTANTE:** Este proyecto usa cuenta Supabase separada (LogiFlow Fichajes). El CLI usa `SUPABASE_ACCESS_TOKEN` de `.env` automaticamente.
 
 **URL Proyecto:** `https://xzrhjeghgrjlhihspdcp.supabase.co`
 

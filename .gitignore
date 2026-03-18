@@ -47,3 +47,6 @@ keystore.properties
 
 # MCP configuration (contains tokens)
 .mcp.json
+
+# Supabase CLI temp files (contiene connection strings con password)
+supabase/.temp/
