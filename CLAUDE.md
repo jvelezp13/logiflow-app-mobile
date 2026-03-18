@@ -193,10 +193,3 @@ Antes de modificar cualquier tabla:
 | **Web Admin Next.js** | `~/CascadeProjects/logiflow-admin-nextjs` | Activo |
 | **Web Admin v2** | `~/CascadeProjects/logiflow-control-horarios-v2` | Congelado |
 
-## Usuario
-
-Julián no es programador. Claude es el ejecutor técnico. Siempre:
-- Explicar cambios antes de implementar
-- Presentar opciones cuando hay decisiones
-- Validar en dispositivo antes de continuar
-- No romper App NI Web Admin al modificar DB
