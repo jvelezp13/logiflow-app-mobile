@@ -4,7 +4,8 @@ import NetInfo from '@react-native-community/netinfo';
 import novedadesService, {
   type Novedad,
   type TipoNovedad,
-  type EstadoNovedad
+  type EstadoNovedad,
+  type EstadisticasNovedades,
 } from '../services/novedadesService';
 
 // =====================================================
@@ -16,11 +17,13 @@ export const useNovedades = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [estadisticas, setEstadisticas] = useState({
+  const [estadisticas, setEstadisticas] = useState<EstadisticasNovedades>({
     pendientes: 0,
     aprobadas: 0,
     rechazadas: 0,
-    total: 0
+    abiertas: 0,
+    revisadas: 0,
+    total: 0,
   });
 
   /**
@@ -36,19 +39,21 @@ export const useNovedades = () => {
   /**
    * Carga las novedades del usuario
    */
-  const cargarNovedades = async (filtroEstado?: EstadoNovedad) => {
+  const cargarNovedades = async (
+    filtroEstado?: EstadoNovedad,
+    filtroTipo?: TipoNovedad,
+  ) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Verificar conexión antes de intentar cargar
       const hasConnection = await checkConnection();
       if (!hasConnection) {
         setNovedades([]);
         return;
       }
 
-      const data = await novedadesService.obtenerNovedades(filtroEstado);
+      const data = await novedadesService.obtenerNovedades(filtroEstado, filtroTipo);
       setNovedades(data);
     } catch (err) {
       // Solo loguear si no es error de conexión

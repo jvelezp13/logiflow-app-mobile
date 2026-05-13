@@ -18,9 +18,9 @@ export interface NovedadData {
   longitud?: number;
 }
 
-export type TipoNovedad = 'ajuste_marcaje';
+export type TipoNovedad = 'ajuste_marcaje' | 'exceso_tope_diario';
 
-export type EstadoNovedad = 'pendiente' | 'aprobada' | 'rechazada';
+export type EstadoNovedad = 'pendiente' | 'aprobada' | 'rechazada' | 'abierta' | 'revisada';
 
 export interface NovedadInfo {
   id: string;
@@ -63,8 +63,18 @@ export interface AjusteMarcajeResult {
   error?: string;
 }
 
+export interface EstadisticasNovedades {
+  pendientes: number;
+  aprobadas: number;
+  rechazadas: number;
+  abiertas: number;
+  revisadas: number;
+  total: number;
+}
+
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
   ajuste_marcaje: 'Ajuste de marcaje',
+  exceso_tope_diario: 'Exceso de tope diario',
 };
 
 // =====================================================
@@ -250,10 +260,10 @@ class NovedadesService {
     }
   }
 
-  /**
-   * Obtiene todas las novedades del usuario actual
-   */
-  async obtenerNovedades(filtroEstado?: EstadoNovedad): Promise<Novedad[]> {
+  async obtenerNovedades(
+    filtroEstado?: EstadoNovedad,
+    filtroTipo?: TipoNovedad,
+  ): Promise<Novedad[]> {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -269,6 +279,9 @@ class NovedadesService {
 
       if (filtroEstado) {
         query = query.eq('estado', filtroEstado);
+      }
+      if (filtroTipo) {
+        query = query.eq('tipo_novedad', filtroTipo);
       }
 
       const { data, error } = await query;
@@ -308,15 +321,16 @@ class NovedadesService {
     }
   }
 
-  /**
-   * Obtiene estadísticas de novedades del usuario
-   */
-  async obtenerEstadisticas(): Promise<{
-    pendientes: number;
-    aprobadas: number;
-    rechazadas: number;
-    total: number;
-  }> {
+  async obtenerEstadisticas(): Promise<EstadisticasNovedades> {
+    const empty: EstadisticasNovedades = {
+      pendientes: 0,
+      aprobadas: 0,
+      rechazadas: 0,
+      abiertas: 0,
+      revisadas: 0,
+      total: 0,
+    };
+
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -331,21 +345,24 @@ class NovedadesService {
 
       if (error) {
         console.error('Error obteniendo estadísticas:', error);
-        return { pendientes: 0, aprobadas: 0, rechazadas: 0, total: 0 };
+        return empty;
       }
 
-      const novedadesData = data as { estado: EstadoNovedad }[];
-      const stats = {
-        pendientes: novedadesData.filter(n => n.estado === 'pendiente').length,
-        aprobadas: novedadesData.filter(n => n.estado === 'aprobada').length,
-        rechazadas: novedadesData.filter(n => n.estado === 'rechazada').length,
-        total: novedadesData.length
-      };
-
-      return stats;
+      const rows = (data ?? []) as { estado: EstadoNovedad }[];
+      return rows.reduce<EstadisticasNovedades>((acc, { estado }) => {
+        acc.total += 1;
+        switch (estado) {
+          case 'pendiente': acc.pendientes += 1; break;
+          case 'aprobada': acc.aprobadas += 1; break;
+          case 'rechazada': acc.rechazadas += 1; break;
+          case 'abierta': acc.abiertas += 1; break;
+          case 'revisada': acc.revisadas += 1; break;
+        }
+        return acc;
+      }, empty);
     } catch (error) {
       console.error('Error en obtenerEstadisticas:', error);
-      return { pendientes: 0, aprobadas: 0, rechazadas: 0, total: 0 };
+      return empty;
     }
   }
 
@@ -374,24 +391,11 @@ class NovedadesService {
     };
   }
 
-  /**
-   * Obtiene el usuario actual
-   */
   async obtenerUsuarioActual() {
     return await supabase.auth.getUser();
   }
 
-  /**
-   * Info de novedad asociada a un marcaje
-   */
-
-
-  /**
-   * Obtiene mapa de info de novedades por timestamp_local del marcaje
-   * Útil para mostrar indicadores en el historial de marcajes
-   * Hace join con horarios_registros_diarios para obtener el timestamp_local
-   */
-  async obtenerNovedadesPorTimestamp(): Promise<Map<number, NovedadInfo>> {
+  async obtenerAjustesPorTimestamp(): Promise<Map<number, NovedadInfo>> {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -399,10 +403,6 @@ class NovedadesService {
         return new Map();
       }
 
-      // Join novedades con registros para obtener timestamp_local
-      // Nota: Especificamos la FK explícitamente porque hay 2 relaciones entre estas tablas:
-      // 1. horarios_novedades.marcaje_id -> horarios_registros_diarios.id (la que usamos)
-      // 2. horarios_registros_diarios.ajustado_por_novedad_id -> horarios_novedades.id
       const { data, error } = await supabase
         .from('horarios_novedades')
         .select(`
@@ -412,6 +412,7 @@ class NovedadesService {
           horarios_registros_diarios!horarios_novedades_marcaje_id_fkey(timestamp_local)
         `)
         .eq('user_id', user.id)
+        .eq('tipo_novedad', 'ajuste_marcaje')
         .not('marcaje_id', 'is', null) as {
           data: Array<{
             id: string;
@@ -423,7 +424,7 @@ class NovedadesService {
         };
 
       if (error) {
-        console.error('Error obteniendo novedades por timestamp:', error);
+        console.error('Error obteniendo ajustes por timestamp:', error);
         return new Map();
       }
 
@@ -439,21 +440,43 @@ class NovedadesService {
 
       return map;
     } catch (error) {
-      console.error('Error en obtenerNovedadesPorTimestamp:', error);
+      console.error('Error en obtenerAjustesPorTimestamp:', error);
       return new Map();
     }
   }
 
-  /**
-   * @deprecated Use obtenerNovedadesPorTimestamp instead
-   */
-  async obtenerEstadosPorTimestamp(): Promise<Map<number, EstadoNovedad>> {
-    const novedadesMap = await this.obtenerNovedadesPorTimestamp();
-    const estadosMap = new Map<number, EstadoNovedad>();
-    novedadesMap.forEach((info, timestamp) => {
-      estadosMap.set(timestamp, info.estado);
-    });
-    return estadosMap;
+  async obtenerInfraccionesPorMarcajeId(): Promise<Set<number>> {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        return new Set();
+      }
+
+      const { data, error } = await supabase
+        .from('horarios_novedades')
+        .select('marcaje_id')
+        .eq('user_id', user.id)
+        .eq('tipo_novedad', 'exceso_tope_diario')
+        .not('marcaje_id', 'is', null) as {
+          data: Array<{ marcaje_id: number | null }> | null;
+          error: unknown;
+        };
+
+      if (error) {
+        console.error('Error obteniendo infracciones por marcaje:', error);
+        return new Set();
+      }
+
+      return new Set(
+        (data ?? [])
+          .map((r) => r.marcaje_id)
+          .filter((id): id is number => id !== null),
+      );
+    } catch (error) {
+      console.error('Error en obtenerInfraccionesPorMarcajeId:', error);
+      return new Set();
+    }
   }
 }
 

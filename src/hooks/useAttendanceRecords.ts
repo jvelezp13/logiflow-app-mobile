@@ -51,7 +51,7 @@ export const useAttendanceRecords = (
    */
   const refreshNovedades = useCallback(async () => {
     try {
-      const info = await novedadesService.obtenerNovedadesPorTimestamp();
+      const info = await novedadesService.obtenerAjustesPorTimestamp();
       setNovedadesInfo(info);
     } catch (error) {
       console.error('[useAttendanceRecords] Refresh novedades error:', error);

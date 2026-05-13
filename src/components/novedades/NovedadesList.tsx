@@ -86,11 +86,15 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
   const getEmptyMessageForEstado = (estado: EstadoNovedad): string => {
     switch (estado) {
       case 'pendiente':
-        return 'No tienes novedades pendientes de revisión';
+        return 'No tienes solicitudes pendientes de revisión';
       case 'aprobada':
-        return 'No tienes novedades aprobadas';
+        return 'No tienes solicitudes aprobadas';
       case 'rechazada':
-        return 'No tienes novedades rechazadas';
+        return 'No tienes solicitudes rechazadas';
+      case 'abierta':
+        return 'No tienes infracciones abiertas';
+      case 'revisada':
+        return 'No tienes infracciones revisadas';
       default:
         return 'No hay novedades para mostrar';
     }
