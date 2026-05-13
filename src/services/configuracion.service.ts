@@ -234,14 +234,3 @@ export function calculateNetHours(grossHours: number, minutosDescanso: number): 
   return Math.max(0, netHours); // Never return negative
 }
 
-/**
- * Check if hours exceed the maximum allowed
- *
- * @param netHours - Net hours worked
- * @param maxHorasDia - Maximum allowed hours
- * @returns Number of extra hours (0 if within limit)
- */
-export function getExtraHours(netHours: number, maxHorasDia: number): number {
-  const extraHours = netHours - maxHorasDia;
-  return Math.max(0, extraHours);
-}

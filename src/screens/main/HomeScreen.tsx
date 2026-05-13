@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@hooks/useAuth';
 import { useLocation } from '@hooks/useLocation';
 import { checkNetworkStatus } from '@hooks/useNetworkStatus';
+import { useProgresoSemanal } from '@hooks/useProgresoSemanal';
 import { attendanceService } from '@services/attendance';
 import { syncService } from '@services/sync/sync.service';
 import { CameraCapture } from '@components/Camera/CameraCapture';
@@ -28,7 +29,6 @@ import { SpecialHoursWarningModal, WarningType } from '@components/SpecialHoursW
 import {
   getConfigForUser,
   calculateNetHours,
-  getExtraHours,
   isNocturnalDecimalHour,
   type RoleConfig,
 } from '@services/configuracion.service';
@@ -130,15 +130,11 @@ export const HomeScreen: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false); // Processing attendance record
   const [processingType, setProcessingType] = useState<AttendanceType | null>(null); // Type being processed
 
-  // Configuration and special hours warning state
   const [roleConfig, setRoleConfig] = useState<RoleConfig | null>(null);
   const [showWarningModal, setShowWarningModal] = useState(false);
-  const [warningType, setWarningType] = useState<WarningType>('extra');
-  const [pendingExtraHours, setPendingExtraHours] = useState(0);
-  const [pendingPhotoData, setPendingPhotoData] = useState<{
-    uri: string;
-    base64: string;
-  } | null>(null);
+  const [warningType, setWarningType] = useState<WarningType>('tope_diario');
+
+  const { progreso: progresoSemanal, refrescar: refrescarProgresoSemanal } = useProgresoSemanal(user?.cedula ?? null);
 
   // Clock is now handled by ClockDisplay component (memoized)
 
@@ -235,7 +231,7 @@ export const HomeScreen: React.FC = () => {
    */
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([loadData(), checkServicesStatus()]);
+    await Promise.all([loadData(), checkServicesStatus(), refrescarProgresoSemanal()]);
     setIsRefreshing(false);
   };
 
@@ -249,20 +245,11 @@ export const HomeScreen: React.FC = () => {
     return isNocturnalDecimalHour(currentDecimalHour, roleConfig);
   }, [roleConfig]);
 
-  /**
-   * Calculate projected hours if clocking out now
-   */
-  const calculateProjectedHours = useCallback((): { netHours: number; extraHours: number } => {
-    if (!roleConfig || todayRecords.length === 0) {
-      return { netHours: 0, extraHours: 0 };
-    }
-
-    // Get gross hours including current open session
+  const proyectarExcesoTopeDiario = useCallback((): number => {
+    if (!roleConfig || todayRecords.length === 0) return 0;
     const { hours: grossHours } = calculateWorkedHours();
     const netHours = calculateNetHours(grossHours, roleConfig.minutosDescanso);
-    const extraHours = getExtraHours(netHours, roleConfig.maxHorasDia);
-
-    return { netHours, extraHours };
+    return Math.max(0, netHours - roleConfig.maxHorasDia);
   }, [roleConfig, todayRecords]);
 
   /**
@@ -275,11 +262,9 @@ export const HomeScreen: React.FC = () => {
       return;
     }
 
-    // Check if clocking in during nocturnal hours
     if (roleConfig && checkNocturnalHours()) {
       setSelectedType('clock_in');
       setWarningType('nocturna');
-      setPendingExtraHours(0);
       setShowWarningModal(true);
       return;
     }
@@ -299,23 +284,20 @@ export const HomeScreen: React.FC = () => {
       return;
     }
 
-    // Check for special hours
     if (roleConfig) {
-      const { extraHours } = calculateProjectedHours();
+      const excesoTope = proyectarExcesoTopeDiario();
       const isNocturnal = checkNocturnalHours();
 
-      if (extraHours > 0 && isNocturnal) {
+      if (excesoTope > 0 && isNocturnal) {
         setSelectedType('clock_out');
         setWarningType('ambas');
-        setPendingExtraHours(extraHours);
         setShowWarningModal(true);
         return;
       }
 
-      if (extraHours > 0) {
+      if (excesoTope > 0) {
         setSelectedType('clock_out');
-        setWarningType('extra');
-        setPendingExtraHours(extraHours);
+        setWarningType('tope_diario');
         setShowWarningModal(true);
         return;
       }
@@ -323,7 +305,6 @@ export const HomeScreen: React.FC = () => {
       if (isNocturnal) {
         setSelectedType('clock_out');
         setWarningType('nocturna');
-        setPendingExtraHours(0);
         setShowWarningModal(true);
         return;
       }
@@ -447,8 +428,7 @@ export const HomeScreen: React.FC = () => {
 
         Alert.alert('Éxito', `${typeText} registrada correctamente${locationText}`);
 
-        // Reload data
-        await loadData();
+        await Promise.all([loadData(), refrescarProgresoSemanal()]);
       } else {
         Alert.alert('Error', result.error || 'Error al registrar marcaje');
       }
@@ -537,6 +517,25 @@ export const HomeScreen: React.FC = () => {
           <Text style={styles.greeting}>Hola,</Text>
           <Text style={styles.userName}>{userFullName}</Text>
         </View>
+
+        {progresoSemanal && (
+          <View style={styles.progresoSemanalContainer}>
+            <Text style={styles.progresoSemanalTitle}>Esta semana</Text>
+            <Text style={styles.progresoSemanalValue}>
+              {formatWorkedHours(progresoSemanal.horasTrabajadas)} / {formatWorkedHours(progresoSemanal.maxHorasSemana)}
+            </Text>
+            {progresoSemanal.horasRestantes > 0 && (
+              <Text style={styles.progresoSemanalSubtext}>
+                {formatWorkedHours(progresoSemanal.horasRestantes)} restantes
+              </Text>
+            )}
+            {progresoSemanal.horasExtraSemanal > 0 && (
+              <Text style={styles.progresoSemanalExtras}>
+                {formatWorkedHours(progresoSemanal.horasExtraSemanal)} de extras esta semana
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Clock Section */}
         <View style={styles.clockSection}>
@@ -682,11 +681,9 @@ export const HomeScreen: React.FC = () => {
         title={selectedType === 'clock_in' ? 'Foto de Entrada' : 'Foto de Salida'}
       />
 
-      {/* Special Hours Warning Modal */}
       <SpecialHoursWarningModal
         visible={showWarningModal}
         type={warningType}
-        horasExtra={pendingExtraHours}
         isEntry={selectedType === 'clock_in'}
         onConfirm={handleWarningConfirm}
       />

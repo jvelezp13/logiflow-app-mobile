@@ -1,13 +1,3 @@
-/**
- * SpecialHoursWarningModal Component
- *
- * Shows a warning when employee is about to clock in/out during special hours:
- * - Extra hours: Working more than max_horas_dia
- * - Nocturnal hours: Working in 19:00-06:00 range
- *
- * This modal is informational only - it does NOT block the attendance marking.
- */
-
 import React, { memo } from 'react';
 import {
   Modal,
@@ -25,63 +15,54 @@ import {
   BORDER_RADIUS,
 } from '@constants/theme';
 
-export type WarningType = 'extra' | 'nocturna' | 'ambas';
+export type WarningType = 'tope_diario' | 'nocturna' | 'ambas';
 
 export type SpecialHoursWarningModalProps = {
   visible: boolean;
   type: WarningType;
-  horasExtra?: number;
-  isEntry?: boolean; // true for clock-in, false for clock-out
+  isEntry?: boolean;
   onConfirm: () => void;
-};
-
-// Formato "Xh Ym" para horas decimales
-const formatHorasMinutos = (horas: number): string => {
-  const h = Math.floor(horas);
-  const m = Math.round((horas - h) * 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
 const SpecialHoursWarningModalComponent: React.FC<SpecialHoursWarningModalProps> = ({
   visible,
   type,
-  horasExtra = 0,
   isEntry = false,
   onConfirm,
 }) => {
   const getTitle = () => {
-    if (type === 'ambas') return 'Horas Extra y Nocturnas';
-    if (type === 'extra') return 'Horas Extra Detectadas';
+    if (type === 'ambas') return 'Tope Diario y Horario Nocturno';
+    if (type === 'tope_diario') return 'Tope Diario Superado';
     return 'Horario Nocturno';
   };
 
   const getIcon = () => {
     if (type === 'nocturna') return 'weather-night';
-    return 'clock-alert-outline';
+    return 'alert-octagon-outline';
   };
 
   const getIconColor = () => {
-    if (type === 'nocturna') return '#6366F1'; // Indigo for night
-    return '#F59E0B'; // Amber for extra hours
+    if (type === 'nocturna') return '#6366F1';
+    return '#DC2626';
   };
 
   const getMessage = () => {
     const messages: string[] = [];
 
-    if (type === 'extra' || type === 'ambas') {
+    if (type === 'tope_diario' || type === 'ambas') {
       messages.push(
-        `Al marcar salida, tendrás aproximadamente ${formatHorasMinutos(horasExtra)} extra que exceden tu jornada diaria permitida.`
+        'Vas a superar tu tope diario de 9h. Esto va a registrar una INFRACCIÓN para revisión de tu supervisor. Las horas se contarán como trabajadas pero NO como extras.'
       );
     }
 
     if (type === 'nocturna' || type === 'ambas') {
       if (isEntry) {
         messages.push(
-          'Estás marcando entrada durante horario nocturno (19:00 - 06:00). Este trabajo requiere autorización especial.'
+          'Estás marcando entrada durante horario nocturno (19:00 - 06:00).'
         );
       } else {
         messages.push(
-          'Parte de tu jornada fue en horario nocturno (19:00 - 06:00). Estas horas requieren autorización especial.'
+          'Parte de tu jornada fue en horario nocturno (19:00 - 06:00).'
         );
       }
     }
@@ -89,9 +70,7 @@ const SpecialHoursWarningModalComponent: React.FC<SpecialHoursWarningModalProps>
     return messages.join('\n\n');
   };
 
-  const getSubtext = () => {
-    return 'Tu marcaje se registrará normalmente. El administrador revisará y aprobará las horas especiales.';
-  };
+  const getSubtext = () => 'Tu marcaje se registrará normalmente.';
 
   return (
     <Modal
