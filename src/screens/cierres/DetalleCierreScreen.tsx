@@ -207,27 +207,17 @@ export const DetalleCierreScreen: React.FC = () => {
   // State for rejection comments
   const [comentariosRechazo, setComentariosRechazo] = useState<string[]>([]);
 
-  // Helper para traducir tipo de novedad
   const traducirTipo = useCallback((tipo: string): string => {
     const traducciones: Record<string, string> = {
-      'horas_extra': 'Extra diarias',
-      'horas_extra_nocturna': 'Extra nocturnas',
-      'horas_extra_semanal': 'Extra semanales',
-      'horas_nocturnas': 'Nocturnas',
+      horas_extra_semanal: 'Extra semanales',
+      exceso_tope_diario: 'Exceso de tope diario',
     };
     return traducciones[tipo] || tipo;
   }, []);
 
-  // Cargar comentarios de rechazo cuando hay horas rechazadas
   const cargarComentariosRechazo = useCallback(async (cierreData: CierreSemanal) => {
     const totales = cierreData.datos_semana.totales;
-    const tieneRechazadas =
-      (totales.horas_extra_rechazadas ?? 0) > 0 ||
-      (totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
-      (totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
-      (totales.horas_nocturnas_rechazadas ?? 0) > 0;
-
-    if (!tieneRechazadas) {
+    if ((totales.horas_extra_semanal_rechazadas ?? 0) === 0) {
       setComentariosRechazo([]);
       return;
     }
@@ -416,23 +406,12 @@ export const DetalleCierreScreen: React.FC = () => {
   const { datos_semana } = cierre;
   const puedeResponder = cierre.estado === 'publicado';
 
-  // Variables auxiliares para sección de aprobación
-  // Usar valores de novedades (aprobadas/rechazadas) para determinar si hay horas especiales
   const tieneHorasEspeciales =
-    (datos_semana.totales.horas_extra_aprobadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
     (datos_semana.totales.horas_extra_semanal_aprobadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_nocturnas_aprobadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0;
+    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0;
 
   const tieneHorasRechazadas =
-    (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0 ||
-    (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0;
+    (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0;
 
   // AprobacionRow moved outside component for optimization (memoized)
 
@@ -465,48 +444,13 @@ export const DetalleCierreScreen: React.FC = () => {
             <Text style={styles.horasRegistradasLabel}>Registradas</Text>
           </View>
 
-          {/* Horas especiales con badges inline */}
           {tieneHorasEspeciales && (
             <View style={styles.horasEspecialesCompacto}>
-              {/* Extra diarias - mostrar si hay aprobadas o rechazadas */}
-              {((datos_semana.totales.horas_extra_aprobadas ?? 0) > 0 ||
-                (datos_semana.totales.horas_extra_rechazadas ?? 0) > 0) && (
-                <AprobacionRow
-                  tipo="Extra diarias"
-                  aprobadas={datos_semana.totales.horas_extra_aprobadas ?? 0}
-                  rechazadas={datos_semana.totales.horas_extra_rechazadas ?? 0}
-                />
-              )}
-
-              {/* Extra nocturnas */}
-              {((datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0) > 0 ||
-                (datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0) > 0) && (
-                <AprobacionRow
-                  tipo="Extra nocturnas"
-                  aprobadas={datos_semana.totales.horas_extra_nocturna_aprobadas ?? 0}
-                  rechazadas={datos_semana.totales.horas_extra_nocturna_rechazadas ?? 0}
-                />
-              )}
-
-              {/* Extra semanales */}
-              {((datos_semana.totales.horas_extra_semanal_aprobadas ?? 0) > 0 ||
-                (datos_semana.totales.horas_extra_semanal_rechazadas ?? 0) > 0) && (
-                <AprobacionRow
-                  tipo="Extra semanales"
-                  aprobadas={datos_semana.totales.horas_extra_semanal_aprobadas ?? 0}
-                  rechazadas={datos_semana.totales.horas_extra_semanal_rechazadas ?? 0}
-                />
-              )}
-
-              {/* Nocturnas ordinarias */}
-              {((datos_semana.totales.horas_nocturnas_aprobadas ?? 0) > 0 ||
-                (datos_semana.totales.horas_nocturnas_rechazadas ?? 0) > 0) && (
-                <AprobacionRow
-                  tipo="Nocturnas"
-                  aprobadas={datos_semana.totales.horas_nocturnas_aprobadas ?? 0}
-                  rechazadas={datos_semana.totales.horas_nocturnas_rechazadas ?? 0}
-                />
-              )}
+              <AprobacionRow
+                tipo="Extra semanales"
+                aprobadas={datos_semana.totales.horas_extra_semanal_aprobadas ?? 0}
+                rechazadas={datos_semana.totales.horas_extra_semanal_rechazadas ?? 0}
+              />
 
               {/* Comentarios de rechazo (si existen) */}
               {tieneHorasRechazadas && comentariosRechazo.length > 0 && (
@@ -795,37 +739,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.backgroundSecondary,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
-  },
-  totalesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
-  },
-  totalItem: {
-    minWidth: 80,
-    alignItems: 'center',
-    padding: SPACING.sm,
-    backgroundColor: COLORS.backgroundSecondary,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  totalValue: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  totalExtra: {
-    color: COLORS.success,
-  },
-  totalExtraNocturna: {
-    color: '#7C3AED', // Violeta - consistente con Web Admin
-  },
-  totalExtraSemanal: {
-    color: '#EA580C', // Orange for weekly extra hours
-  },
-  totalLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    marginTop: 2,
   },
   tableHeader: {
     flexDirection: 'row',
