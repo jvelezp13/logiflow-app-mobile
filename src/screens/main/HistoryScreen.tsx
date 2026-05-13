@@ -40,7 +40,7 @@ export const HistoryScreen: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
 
   // Pass userCedula to enable pulling records from Supabase
-  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, onRefresh } = useAttendanceRecords(
+  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, infraccionesTimestamps, onRefresh } = useAttendanceRecords(
     user?.id,
     dateFilter === 'cierres' ? 'month' : dateFilter, // Use 'month' when on cierres tab
     userCedula
@@ -211,6 +211,7 @@ export const HistoryScreen: React.FC = () => {
     <AttendanceCard
       record={item}
       adjustmentStatus={getNovedadInfo(item)?.estado}
+      hasInfraction={infraccionesTimestamps.has(item.timestamp)}
       onPress={handleRecordPress}
     />
   );

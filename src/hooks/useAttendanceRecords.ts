@@ -44,15 +44,17 @@ export const useAttendanceRecords = (
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullResult, setPullResult] = useState<{ pulled: number } | null>(null);
   const [novedadesInfo, setNovedadesInfo] = useState<NovedadInfoMap>(new Map());
+  const [infraccionesTimestamps, setInfraccionesTimestamps] = useState<Set<number>>(new Set());
   const hasPulled = useRef(false);
 
-  /**
-   * Refresh novedades info from Supabase
-   */
   const refreshNovedades = useCallback(async () => {
     try {
-      const info = await novedadesService.obtenerAjustesPorTimestamp();
-      setNovedadesInfo(info);
+      const [ajustes, infracciones] = await Promise.all([
+        novedadesService.obtenerAjustesPorTimestamp(),
+        novedadesService.obtenerInfraccionesPorTimestamp(),
+      ]);
+      setNovedadesInfo(ajustes);
+      setInfraccionesTimestamps(infracciones);
     } catch (error) {
       console.error('[useAttendanceRecords] Refresh novedades error:', error);
     }
@@ -193,6 +195,7 @@ export const useAttendanceRecords = (
     isRefreshing,
     pullResult,
     novedadesInfo,
+    infraccionesTimestamps,
     onRefresh,
   };
 };

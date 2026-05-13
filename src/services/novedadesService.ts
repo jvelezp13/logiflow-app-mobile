@@ -20,11 +20,13 @@ export interface NovedadData {
 
 export type TipoNovedad = 'ajuste_marcaje' | 'exceso_tope_diario';
 
-export type EstadoNovedad = 'pendiente' | 'aprobada' | 'rechazada' | 'abierta' | 'revisada';
+export type AjusteEstado = 'pendiente' | 'aprobada' | 'rechazada';
+export type InfraccionEstado = 'abierta' | 'revisada';
+export type EstadoNovedad = AjusteEstado | InfraccionEstado;
 
 export interface NovedadInfo {
   id: string;
-  estado: EstadoNovedad;
+  estado: AjusteEstado;
 }
 
 export interface Novedad {
@@ -433,7 +435,7 @@ class NovedadesService {
         if (item.horarios_registros_diarios?.timestamp_local) {
           map.set(item.horarios_registros_diarios.timestamp_local, {
             id: item.id,
-            estado: item.estado as EstadoNovedad,
+            estado: item.estado as AjusteEstado,
           });
         }
       }
@@ -445,7 +447,7 @@ class NovedadesService {
     }
   }
 
-  async obtenerInfraccionesPorMarcajeId(): Promise<Set<number>> {
+  async obtenerInfraccionesPorTimestamp(): Promise<Set<number>> {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -455,26 +457,32 @@ class NovedadesService {
 
       const { data, error } = await supabase
         .from('horarios_novedades')
-        .select('marcaje_id')
+        .select(`
+          marcaje_id,
+          horarios_registros_diarios!horarios_novedades_marcaje_id_fkey(timestamp_local)
+        `)
         .eq('user_id', user.id)
         .eq('tipo_novedad', 'exceso_tope_diario')
         .not('marcaje_id', 'is', null) as {
-          data: Array<{ marcaje_id: number | null }> | null;
+          data: Array<{
+            marcaje_id: number;
+            horarios_registros_diarios: { timestamp_local: number } | null;
+          }> | null;
           error: unknown;
         };
 
       if (error) {
-        console.error('Error obteniendo infracciones por marcaje:', error);
+        console.error('Error obteniendo infracciones por timestamp:', error);
         return new Set();
       }
 
       return new Set(
         (data ?? [])
-          .map((r) => r.marcaje_id)
-          .filter((id): id is number => id !== null),
+          .map((r) => r.horarios_registros_diarios?.timestamp_local)
+          .filter((ts): ts is number => typeof ts === 'number'),
       );
     } catch (error) {
-      console.error('Error en obtenerInfraccionesPorMarcajeId:', error);
+      console.error('Error en obtenerInfraccionesPorTimestamp:', error);
       return new Set();
     }
   }

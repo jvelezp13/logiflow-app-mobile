@@ -11,13 +11,14 @@ import React, { memo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { AttendanceRecord } from '@services/storage';
-import type { EstadoNovedad } from '@services/novedadesService';
+import type { AjusteEstado } from '@services/novedadesService';
 import { styles } from './AttendanceCard.styles';
 import { COLORS } from '@constants/theme';
 
 export type AttendanceCardProps = {
   record: AttendanceRecord;
-  adjustmentStatus?: EstadoNovedad;
+  adjustmentStatus?: AjusteEstado;
+  hasInfraction?: boolean;
   onPress?: (record: AttendanceRecord) => void;
 };
 
@@ -49,6 +50,7 @@ const STATUS_CONFIG = {
 const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
   record,
   adjustmentStatus,
+  hasInfraction = false,
   onPress
 }) => {
   const isClockIn = record.attendanceType === 'clock_in';
@@ -138,6 +140,7 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
         color={COLORS.textSecondary}
         style={styles.chevron}
       />
+      {hasInfraction && <View style={styles.infractionDot} />}
     </TouchableOpacity>
   );
 };
