@@ -201,6 +201,7 @@ const NovedadesScreen: React.FC = () => {
         onIndexChange={setTabIndex}
         initialLayout={initialLayout}
         renderTabBar={renderTabBar}
+        lazy
       />
 
       {enTabSolicitudes && (

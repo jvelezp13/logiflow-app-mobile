@@ -4,7 +4,8 @@
  * Main screen for attendance clock in/out functionality.
  */
 
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -118,7 +119,6 @@ export const HomeScreen: React.FC = () => {
     checkServicesStatus,
   } = useLocation();
 
-  // State (currentTime moved to ClockDisplay component for optimization)
   const [showCamera, setShowCamera] = useState(false);
   const [selectedType, setSelectedType] = useState<AttendanceType | null>(null);
   const [canClockIn, setCanClockIn] = useState(true);
@@ -135,6 +135,20 @@ export const HomeScreen: React.FC = () => {
   const [warningType, setWarningType] = useState<WarningType>('tope_diario');
 
   const { progreso: progresoSemanal, refrescar: refrescarProgresoSemanal } = useProgresoSemanal(user?.cedula ?? null);
+
+  // Refresca progreso semanal al volver al Home (cubre el caso de medianoche
+  // cuando el usuario navega entre pantallas mientras la app sigue activa).
+  useFocusEffect(
+    useCallback(() => {
+      refrescarProgresoSemanal();
+    }, [refrescarProgresoSemanal]),
+  );
+
+  const mostrarWarning = useCallback((type: WarningType, attType: AttendanceType) => {
+    setSelectedType(attType);
+    setWarningType(type);
+    setShowWarningModal(true);
+  }, []);
 
   // Clock is now handled by ClockDisplay component (memoized)
 
@@ -263,9 +277,7 @@ export const HomeScreen: React.FC = () => {
     }
 
     if (roleConfig && checkNocturnalHours()) {
-      setSelectedType('clock_in');
-      setWarningType('nocturna');
-      setShowWarningModal(true);
+      mostrarWarning('nocturna', 'clock_in');
       return;
     }
 
@@ -289,23 +301,15 @@ export const HomeScreen: React.FC = () => {
       const isNocturnal = checkNocturnalHours();
 
       if (excesoTope > 0 && isNocturnal) {
-        setSelectedType('clock_out');
-        setWarningType('ambas');
-        setShowWarningModal(true);
+        mostrarWarning('ambas', 'clock_out');
         return;
       }
-
       if (excesoTope > 0) {
-        setSelectedType('clock_out');
-        setWarningType('tope_diario');
-        setShowWarningModal(true);
+        mostrarWarning('tope_diario', 'clock_out');
         return;
       }
-
       if (isNocturnal) {
-        setSelectedType('clock_out');
-        setWarningType('nocturna');
-        setShowWarningModal(true);
+        mostrarWarning('nocturna', 'clock_out');
         return;
       }
     }
@@ -441,8 +445,6 @@ export const HomeScreen: React.FC = () => {
       setIsProcessing(false);
     }
   };
-
-  // formatTime and formatDate moved to ClockDisplay component
 
   /**
    * Calculate worked hours from today's records

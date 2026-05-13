@@ -178,27 +178,23 @@ export const useNovedades = () => {
     return novedades.filter(n => n.estado === estado);
   };
 
-  /**
-   * Suscribe a cambios en tiempo real
-   */
   useEffect(() => {
+    let isMounted = true;
+    let unsubscribeFunc: (() => void) | undefined;
+
     const inicializar = async () => {
       const { data: { user } } = await novedadesService.obtenerUsuarioActual();
 
-      if (!user) return;
+      if (!user || !isMounted) return;
 
-      // Cargar datos iniciales
       await cargarNovedades();
       await cargarEstadisticas();
 
-      // Suscribirse a cambios
-      const unsuscribe = novedadesService.suscribirACambios(user.id, (novedadActualizada) => {
-        // Actualizar lista local
+      const unsub = novedadesService.suscribirACambios(user.id, (novedadActualizada) => {
         setNovedades(prev =>
           prev.map(n => n.id === novedadActualizada.id ? novedadActualizada : n)
         );
 
-        // Mostrar notificación si el estado cambió
         if (novedadActualizada.estado !== 'pendiente') {
           Alert.alert(
             'Novedad actualizada',
@@ -211,20 +207,22 @@ export const useNovedades = () => {
           );
         }
 
-        // Actualizar estadísticas
         cargarEstadisticas();
       });
 
-      return unsuscribe;
+      // Si el hook se desmonta entre el await y este punto, limpiar inmediatamente.
+      if (!isMounted) {
+        unsub();
+        return;
+      }
+
+      unsubscribeFunc = unsub;
     };
 
-    let unsubscribeFunc: (() => void) | undefined;
-
-    inicializar().then(unsub => {
-      unsubscribeFunc = unsub;
-    });
+    inicializar();
 
     return () => {
+      isMounted = false;
       if (unsubscribeFunc) {
         unsubscribeFunc();
       }

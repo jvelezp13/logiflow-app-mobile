@@ -34,10 +34,8 @@ export const useProgresoSemanal = (cedula: string | null | undefined) => {
     setLoading(true);
     setError(null);
 
-    const { data, error: rpcError } = await (supabase.rpc as unknown as (
-      fn: string,
-      params: Record<string, unknown>,
-    ) => Promise<{ data: unknown; error: { message: string } | null }>)(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error: rpcError } = await (supabase.rpc as any)(
       'calcular_extras_semana_actual',
       {
         p_cedula: cedula,
