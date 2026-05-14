@@ -81,7 +81,10 @@ export const MainNavigator: React.FC = () => {
           ),
         }}
       />
-      {/* Hidden navigator - accessible from History for adjustment details */}
+      {/* Hidden navigator - accessible from History for adjustment details.
+          unmountOnBlur evita que screens internas (SolicitarAjuste / DetalleNovedad)
+          queden residuales entre visitas desde Historial — cada entrada arranca
+          fresca y el back vuelve siempre al Historial. */}
       <Tab.Screen
         name="Novedades"
         component={NovedadesNavigator}
@@ -89,6 +92,7 @@ export const MainNavigator: React.FC = () => {
           headerShown: false,
           tabBarButton: () => null,
           tabBarItemStyle: { display: 'none' },
+          popToTopOnBlur: true,
         }}
       />
       {/* Hidden navigator - accessible from History for closure details */}
