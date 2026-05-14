@@ -50,3 +50,6 @@ keystore.properties
 
 # Supabase CLI temp files (contiene connection strings con password)
 supabase/.temp/
+
+# gentle-ai CLI local metadata (skill registry cache)
+.atl/
