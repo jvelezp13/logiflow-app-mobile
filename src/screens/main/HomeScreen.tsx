@@ -249,6 +249,40 @@ export const HomeScreen: React.FC = () => {
     setIsRefreshing(false);
   };
 
+  // Cada invocacion evalua new Date() fresh para que el caso "in progress"
+  // refleje el tiempo trabajado hasta el momento de llamarla, no hasta el
+  // ultimo cambio de todayRecords. Un useMemo cacheaba el new Date() y
+  // congelaba la cuenta durante toda la jornada.
+  const calculateWorkedHours = useCallback((): { hours: number; isInProgress: boolean } => {
+    if (todayRecords.length === 0) {
+      return { hours: 0, isInProgress: false };
+    }
+
+    const sortedRecords = [...todayRecords].sort((a, b) => a.timestamp - b.timestamp);
+
+    let totalHours = 0;
+    let isInProgress = false;
+    let lastClockIn: number | null = null;
+
+    for (const record of sortedRecords) {
+      if (record.attendanceType === 'clock_in') {
+        lastClockIn = record.timeDecimal;
+      } else if (record.attendanceType === 'clock_out' && lastClockIn !== null) {
+        totalHours += record.timeDecimal - lastClockIn;
+        lastClockIn = null;
+      }
+    }
+
+    if (lastClockIn !== null) {
+      const now = new Date();
+      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
+      totalHours += currentTimeDecimal - lastClockIn;
+      isInProgress = true;
+    }
+
+    return { hours: Math.max(0, totalHours), isInProgress };
+  }, [todayRecords]);
+
   /**
    * Check if current time is in nocturnal hours
    */
@@ -264,7 +298,7 @@ export const HomeScreen: React.FC = () => {
     const { hours: grossHours } = calculateWorkedHours();
     const netHours = calculateNetHours(grossHours, roleConfig.minutosDescanso);
     return Math.max(0, netHours - roleConfig.maxHorasDia);
-  }, [roleConfig, todayRecords]);
+  }, [roleConfig, todayRecords, calculateWorkedHours]);
 
   /**
    * Handle clock in button
@@ -445,44 +479,6 @@ export const HomeScreen: React.FC = () => {
       setIsProcessing(false);
     }
   };
-
-  /**
-   * Calculate worked hours from today's records
-   * Pairs each clock_in with its corresponding clock_out
-   * If currently clocked in (no clock_out), calculates time until now
-   * OPTIMIZATION: Memoized to avoid recalculation on every render
-   */
-  const calculateWorkedHours = useCallback((): { hours: number; isInProgress: boolean } => {
-    if (todayRecords.length === 0) {
-      return { hours: 0, isInProgress: false };
-    }
-
-    // Sort records by timestamp
-    const sortedRecords = [...todayRecords].sort((a, b) => a.timestamp - b.timestamp);
-
-    let totalHours = 0;
-    let isInProgress = false;
-    let lastClockIn: number | null = null;
-
-    for (const record of sortedRecords) {
-      if (record.attendanceType === 'clock_in') {
-        lastClockIn = record.timeDecimal;
-      } else if (record.attendanceType === 'clock_out' && lastClockIn !== null) {
-        totalHours += record.timeDecimal - lastClockIn;
-        lastClockIn = null;
-      }
-    }
-
-    // If there's an open clock_in (no clock_out yet), calculate time until now
-    if (lastClockIn !== null) {
-      const now = new Date();
-      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
-      totalHours += currentTimeDecimal - lastClockIn;
-      isInProgress = true;
-    }
-
-    return { hours: Math.max(0, totalHours), isInProgress };
-  }, [todayRecords]);
 
   /**
    * Format hours as HH:MM

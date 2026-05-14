@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import novedadesService, {
@@ -26,34 +26,47 @@ export const useNovedades = () => {
     total: 0,
   });
 
+  // Guard contra setState tras unmount (cubre setters, Alert, y la callback de realtime).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   /**
    * Verifica si hay conexión a internet
    */
-  const checkConnection = async (): Promise<boolean> => {
+  const checkConnection = useCallback(async (): Promise<boolean> => {
     const state = await NetInfo.fetch();
     const offline = !state.isConnected || !state.isInternetReachable;
+    if (!isMountedRef.current) return !offline;
     setIsOffline(offline);
     return !offline;
-  };
+  }, []);
 
   /**
    * Carga las novedades del usuario
    */
-  const cargarNovedades = async (
+  const cargarNovedades = useCallback(async (
     filtroEstado?: EstadoNovedad,
     filtroTipo?: TipoNovedad,
   ) => {
     try {
+      if (!isMountedRef.current) return;
       setLoading(true);
       setError(null);
 
       const hasConnection = await checkConnection();
       if (!hasConnection) {
+        if (!isMountedRef.current) return;
         setNovedades([]);
         return;
       }
 
       const data = await novedadesService.obtenerNovedades(filtroEstado, filtroTipo);
+      if (!isMountedRef.current) return;
       setNovedades(data);
     } catch (err) {
       // Solo loguear si no es error de conexión
@@ -62,24 +75,29 @@ export const useNovedades = () => {
 
       if (!isNetworkError) {
         const mensaje = err instanceof Error ? err.message : 'Error al cargar novedades';
-        setError(mensaje);
+        if (isMountedRef.current) {
+          setError(mensaje);
+        }
         console.error('Error cargando novedades:', err);
       }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [checkConnection]);
 
   /**
    * Carga las estadísticas del usuario
    */
-  const cargarEstadisticas = async () => {
+  const cargarEstadisticas = useCallback(async () => {
     try {
       // No cargar si estamos offline
       const hasConnection = await checkConnection();
       if (!hasConnection) return;
 
       const stats = await novedadesService.obtenerEstadisticas();
+      if (!isMountedRef.current) return;
       setEstadisticas(stats);
     } catch (err) {
       // Silenciar errores de red (son esperados offline)
@@ -90,28 +108,31 @@ export const useNovedades = () => {
         console.error('Error cargando estadísticas:', err);
       }
     }
-  };
+  }, [checkConnection]);
 
   /**
    * Crea una nueva novedad
    */
-  const crearNovedad = async (data: {
+  const crearNovedad = useCallback(async (data: {
     fecha: string;
     tipo_novedad: TipoNovedad;
     motivo: string;
   }): Promise<boolean> => {
     try {
+      if (!isMountedRef.current) return false;
       setLoading(true);
       setError(null);
 
       // Verificar conexión antes de intentar crear
       const hasConnection = await checkConnection();
       if (!hasConnection) {
-        Alert.alert(
-          'Sin conexión',
-          'No puedes crear novedades sin conexión a internet. Intenta cuando tengas conexión.',
-          [{ text: 'OK' }]
-        );
+        if (isMountedRef.current) {
+          Alert.alert(
+            'Sin conexión',
+            'No puedes crear novedades sin conexión a internet. Intenta cuando tengas conexión.',
+            [{ text: 'OK' }]
+          );
+        }
         return false;
       }
 
@@ -131,30 +152,36 @@ export const useNovedades = () => {
         throw new Error('No se pudo crear la novedad');
       }
 
-      // Recargar listas
+      // Recargar listas (los setters internos ya están guardados)
       await cargarNovedades();
       await cargarEstadisticas();
 
-      Alert.alert(
-        'Éxito',
-        'Tu novedad ha sido reportada exitosamente. Recibirás una notificación cuando sea revisada.',
-        [{ text: 'OK' }]
-      );
+      if (isMountedRef.current) {
+        Alert.alert(
+          'Éxito',
+          'Tu novedad ha sido reportada exitosamente. Recibirás una notificación cuando sea revisada.',
+          [{ text: 'OK' }]
+        );
+      }
 
       return true;
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al crear novedad';
-      setError(mensaje);
-      Alert.alert(
-        'Error',
-        `No se pudo crear la novedad: ${mensaje}`,
-        [{ text: 'OK' }]
-      );
+      if (isMountedRef.current) {
+        setError(mensaje);
+        Alert.alert(
+          'Error',
+          `No se pudo crear la novedad: ${mensaje}`,
+          [{ text: 'OK' }]
+        );
+      }
       return false;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [checkConnection, cargarNovedades, cargarEstadisticas]);
 
   /**
    * Obtiene una novedad por ID
@@ -179,23 +206,24 @@ export const useNovedades = () => {
   };
 
   useEffect(() => {
-    let isMounted = true;
     let unsubscribeFunc: (() => void) | undefined;
 
     const inicializar = async () => {
       const { data: { user } } = await novedadesService.obtenerUsuarioActual();
 
-      if (!user || !isMounted) return;
+      if (!user || !isMountedRef.current) return;
 
       await cargarNovedades();
       await cargarEstadisticas();
 
       const unsub = novedadesService.suscribirACambios(user.id, (novedadActualizada) => {
+        if (!isMountedRef.current) return;
         setNovedades(prev =>
           prev.map(n => n.id === novedadActualizada.id ? novedadActualizada : n)
         );
 
         if (novedadActualizada.estado !== 'pendiente') {
+          if (!isMountedRef.current) return;
           Alert.alert(
             'Novedad actualizada',
             `Tu novedad ha sido ${novedadActualizada.estado}${
@@ -207,11 +235,13 @@ export const useNovedades = () => {
           );
         }
 
-        cargarEstadisticas();
+        if (isMountedRef.current) {
+          cargarEstadisticas();
+        }
       });
 
       // Si el hook se desmonta entre el await y este punto, limpiar inmediatamente.
-      if (!isMounted) {
+      if (!isMountedRef.current) {
         unsub();
         return;
       }
@@ -222,11 +252,13 @@ export const useNovedades = () => {
     inicializar();
 
     return () => {
-      isMounted = false;
       if (unsubscribeFunc) {
         unsubscribeFunc();
       }
     };
+    // Suscripción de realtime solo debe inicializarse una vez por monte del hook.
+    // cargarNovedades/cargarEstadisticas son estables (useCallback con deps planas).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

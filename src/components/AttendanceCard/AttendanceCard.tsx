@@ -134,13 +134,13 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
       {showSyncStatus && <Text style={styles.syncIcon}>{syncIcon}</Text>}
       {renderAdminBadge()}
       {renderStatusBadge()}
+      {hasInfraction && <View style={styles.infractionDot} />}
       <MaterialCommunityIcons
         name="chevron-right"
         size={20}
         color={COLORS.textSecondary}
         style={styles.chevron}
       />
-      {hasInfraction && <View style={styles.infractionDot} />}
     </TouchableOpacity>
   );
 };

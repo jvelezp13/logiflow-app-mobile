@@ -53,6 +53,17 @@ const NovedadesScreen: React.FC = () => {
   const solicitudes = useMemo(() => filtrarPorTipo(novedades, 'ajuste_marcaje'), [novedades]);
   const infracciones = useMemo(() => filtrarPorTipo(novedades, 'exceso_tope_diario'), [novedades]);
 
+  // Filtrado final por chip (estado). Single source of truth: el screen filtra ambas dimensiones
+  // (tipo + estado) y pasa una lista lista para renderizar.
+  const solicitudesFiltradas = useMemo(
+    () => (chipAjuste === 'todas' ? solicitudes : solicitudes.filter((n) => n.estado === chipAjuste)),
+    [solicitudes, chipAjuste],
+  );
+  const infraccionesFiltradas = useMemo(
+    () => (chipInfraccion === 'todas' ? infracciones : infracciones.filter((n) => n.estado === chipInfraccion)),
+    [infracciones, chipInfraccion],
+  );
+
   const handleNovedadPress = (novedad: Novedad) => {
     navigation.navigate('DetalleNovedad', { novedadId: novedad.id });
   };
@@ -95,36 +106,37 @@ const NovedadesScreen: React.FC = () => {
 
   const renderScene = ({ route }: { route: { key: string } }) => {
     if (route.key === 'solicitudes') {
-      const filtro: EstadoNovedad | undefined = chipAjuste === 'todas' ? undefined : chipAjuste;
+      const emptyEstado: EstadoNovedad | undefined = chipAjuste === 'todas' ? undefined : chipAjuste;
       return (
         <View style={styles.sceneContainer}>
           {renderChips(AJUSTE_CHIPS, chipAjuste, (k) => setChipAjuste(k as AjusteEstado | 'todas'))}
           <NovedadesList
-            novedades={solicitudes}
+            novedades={solicitudesFiltradas}
             onNovedadPress={handleNovedadPress}
-            filtroEstado={filtro}
+            emptyEstado={emptyEstado}
             refreshing={loading}
             onRefresh={handleRefresh}
-            loading={loading && solicitudes.length === 0}
+            loading={loading && solicitudesFiltradas.length === 0}
             isOffline={isOffline}
           />
         </View>
       );
     }
 
-    const filtro: EstadoNovedad | undefined = chipInfraccion === 'todas' ? undefined : chipInfraccion;
+    const emptyEstado: EstadoNovedad | undefined =
+      chipInfraccion === 'todas' ? undefined : chipInfraccion;
     return (
       <View style={styles.sceneContainer}>
         {renderChips(INFRACCION_CHIPS, chipInfraccion, (k) =>
           setChipInfraccion(k as InfraccionEstado | 'todas'),
         )}
         <NovedadesList
-          novedades={infracciones}
+          novedades={infraccionesFiltradas}
           onNovedadPress={handleNovedadPress}
-          filtroEstado={filtro}
+          emptyEstado={emptyEstado}
           refreshing={loading}
           onRefresh={handleRefresh}
-          loading={loading && infracciones.length === 0}
+          loading={loading && infraccionesFiltradas.length === 0}
           isOffline={isOffline}
         />
       </View>

@@ -13,6 +13,7 @@ import * as PinAuthService from '@services/auth/pinAuth.service';
 import type { UserData } from '@services/supabase/auth.service';
 import type { PinUserData } from '@services/auth/pinAuth.service';
 import { STORAGE_KEYS } from '@constants/config';
+import { clearConfigCache } from '@services/configuracion.service';
 
 /**
  * Kiosk mode storage key
@@ -155,7 +156,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
         console.log('[AuthStore] Session validated online');
       } else {
-        // No valid session from Supabase - clear cache
+        // No valid session from Supabase - clear cache.
+        // Invalidar config cacheada: este "logout silencioso" debe romper TTL
+        // para que el próximo usuario no herede config del anterior.
+        clearConfigCache();
         await AsyncStorage.removeItem(STORAGE_KEYS.USER_DATA);
         set({
           user: null,
@@ -208,6 +212,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
+      // Defensa contra TTL del cache de config: si quedó algo del usuario
+      // anterior (estado huérfano), tirarlo antes de autenticar al nuevo.
+      clearConfigCache();
+
       const result = await AuthService.signIn(email, password);
 
       if (result.success && result.user) {
@@ -257,6 +265,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
+      // Invalidar config cacheada para evitar fugas entre usuarios.
+      clearConfigCache();
+
       // Sign out from Supabase
       await AuthService.signOut();
 
@@ -301,6 +312,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       console.log('[AuthStore] Enabling kiosk mode');
 
+      // Siempre tirar config cacheada al activar kiosko, incluso si no había
+      // sesión activa: puede quedar config de un logout reciente dentro del TTL.
+      clearConfigCache();
+
       // Logout current user if authenticated
       if (get().isAuthenticated) {
         await AuthService.signOut();
@@ -336,6 +351,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       console.log('[AuthStore] Disabling kiosk mode');
 
+      // El último kioskUser puede haber dejado config cacheada; si un usuario
+      // normal entra dentro del TTL heredaría límites equivocados.
+      clearConfigCache();
+
       // Remove kiosk mode flag
       await AsyncStorage.removeItem(KIOSK_MODE_KEY);
 
@@ -370,6 +389,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const result = await PinAuthService.authenticateWithPin(pin);
 
       if (result.success && result.user) {
+        // Cada login en kiosko es un usuario distinto: tirar la config del anterior
+        // para que el siguiente getConfigForUser refleje su rol y no el cacheado.
+        clearConfigCache();
+
         // Set kiosk user (temporary, not persisted)
         // Store PIN temporarily in memory for Edge Function authentication
         set({
@@ -415,6 +438,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    */
   logoutKiosk: () => {
     console.log('[AuthStore] Logging out kiosk user');
+    // El siguiente login en kiosko también limpia, pero limpiamos acá
+    // para no servir la config de A al primer render de B antes del fetch.
+    clearConfigCache();
     set({
       kioskUser: null,
       isKioskAuthenticated: false,

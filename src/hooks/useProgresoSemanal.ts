@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '@services/supabase/client';
 
@@ -25,12 +25,23 @@ export const useProgresoSemanal = (cedula: string | null | undefined) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Guard contra setState tras unmount mientras la RPC está en vuelo.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const cargar = useCallback(async () => {
     if (!cedula) {
+      if (!isMountedRef.current) return;
       setProgreso(null);
       return;
     }
 
+    if (!isMountedRef.current) return;
     setLoading(true);
     setError(null);
 
@@ -42,6 +53,8 @@ export const useProgresoSemanal = (cedula: string | null | undefined) => {
         p_fecha: format(new Date(), 'yyyy-MM-dd'),
       },
     );
+
+    if (!isMountedRef.current) return;
 
     if (rpcError) {
       console.error('[useProgresoSemanal] RPC error:', rpcError);
@@ -74,9 +87,8 @@ export const useProgresoSemanal = (cedula: string | null | undefined) => {
     setLoading(false);
   }, [cedula]);
 
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
+  // El consumidor (HomeScreen) dispara la carga inicial vía useFocusEffect.
+  // Evitamos el fetch duplicado de un useEffect interno + el del foco.
 
   return { progreso, error, loading, refrescar: cargar };
 };

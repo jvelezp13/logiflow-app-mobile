@@ -157,7 +157,7 @@ class NovedadesService {
       }
 
       // Obtener tenant_id (requerido por RLS)
-      const tenantId = await obtenerTenantIdRequerido();
+      const tenantId = obtenerTenantIdRequerido();
 
       // Determinar marcaje_id
       let marcajeId = data.marcaje_id;
@@ -212,8 +212,8 @@ class NovedadesService {
   }
 
   /**
-   * Crea una nueva novedad (legacy - mantener por compatibilidad)
-   * @deprecated Use crearAjusteMarcaje instead
+   * Crea una nueva novedad genérica (usado por el FAB de Solicitudes).
+   * No incluye marcaje_id ni horas; solo fecha + tipo + motivo + ubicación opcional.
    */
   async crearNovedad(data: Omit<NovedadData, 'user_id' | 'cedula' | 'empleado'>): Promise<Novedad | null> {
     try {
@@ -235,12 +235,16 @@ class NovedadesService {
         throw new Error('No se pudo obtener información del perfil');
       }
 
+      // Obtener tenant_id (requerido por RLS — sin esto el INSERT falla silenciosamente)
+      const tenantId = obtenerTenantIdRequerido();
+
       // Preparar datos completos
-      const novedadCompleta: NovedadData = {
+      const novedadCompleta: NovedadData & { tenant_id: string } = {
         user_id: user.id,
         cedula: profile.cedula,
         empleado: profile.nombre,
-        ...data
+        ...data,
+        tenant_id: tenantId,
       };
 
       // Insertar en la base de datos
