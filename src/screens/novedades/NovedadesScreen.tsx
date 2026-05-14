@@ -152,6 +152,7 @@ const NovedadesScreen: React.FC = () => {
         onIndexChange={setIndex}
         initialLayout={initialLayout}
         renderTabBar={renderTabBar}
+        lazy
       />
 
       {/* FAB para crear novedad */}

@@ -139,9 +139,7 @@ export const HomeScreen: React.FC = () => {
     }
   }, [user?.id, user?.cedula]); // Re-run when user becomes available
 
-  /**
-   * Load role configuration for special hours warnings
-   */
+  // roleConfig se usa para descontar minutosDescanso del total de horas del dia.
   const loadRoleConfig = async () => {
     if (!user?.id) return;
 
@@ -151,7 +149,6 @@ export const HomeScreen: React.FC = () => {
       console.log('[HomeScreen] Role config loaded:', config);
     } catch (error) {
       console.error('[HomeScreen] Failed to load role config:', error);
-      // Continue without config - warnings will be skipped
     }
   };
 
