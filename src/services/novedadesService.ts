@@ -21,8 +21,7 @@ export interface NovedadData {
 export type TipoNovedad = 'ajuste_marcaje' | 'exceso_tope_diario';
 
 export type AjusteEstado = 'pendiente' | 'aprobada' | 'rechazada';
-export type InfraccionEstado = 'abierta' | 'revisada';
-export type EstadoNovedad = AjusteEstado | InfraccionEstado;
+export type EstadoNovedad = AjusteEstado;
 
 export interface NovedadInfo {
   id: string;

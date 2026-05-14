@@ -32,20 +32,6 @@ const NovedadStatusBadge: React.FC<NovedadStatusBadgeProps> = ({ estado, size = 
           textColor: '#991B1B',
           icon: 'close-circle' as keyof typeof MaterialCommunityIcons.glyphMap,
         };
-      case 'abierta':
-        return {
-          label: 'Abierta',
-          backgroundColor: '#FEF3C7',
-          textColor: '#92400E',
-          icon: 'alert-circle' as keyof typeof MaterialCommunityIcons.glyphMap,
-        };
-      case 'revisada':
-        return {
-          label: 'Revisada',
-          backgroundColor: '#DBEAFE',
-          textColor: '#1E40AF',
-          icon: 'check-circle-outline' as keyof typeof MaterialCommunityIcons.glyphMap,
-        };
       default:
         return {
           label: estado,

@@ -91,10 +91,6 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
         return 'No tienes solicitudes aprobadas';
       case 'rechazada':
         return 'No tienes solicitudes rechazadas';
-      case 'abierta':
-        return 'No tienes infracciones abiertas';
-      case 'revisada':
-        return 'No tienes infracciones revisadas';
       default:
         return 'No hay novedades para mostrar';
     }
