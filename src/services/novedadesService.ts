@@ -195,8 +195,7 @@ class NovedadesService {
         // 23505 = unique_violation. La DB tiene un UNIQUE INDEX parcial sobre
         // (marcaje_id, tipo_novedad) WHERE estado='pendiente' que previene
         // duplicados. Traducimos a un mensaje legible para el empleado.
-        const code = (error as { code?: string } | null)?.code;
-        if (code === '23505') {
+        if (error.code === '23505') {
           return {
             success: false,
             error: 'Ya tenés una solicitud pendiente para este marcaje. Esperá a que tu supervisor la revise antes de pedir otra.',
