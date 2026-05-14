@@ -455,6 +455,10 @@ export const syncService = {
           photoUrl,
           photoUploaded: true,
         });
+        // Libera la copia base64 local: la foto vive en Supabase Storage. Sin
+        // esto el SQLite crece ~270KB por marcaje y satura /data en handhelds
+        // tipo Zebra con app data partition chica.
+        await attendanceRecordService.clearPhotoBase64(record.id);
       } else if (record.photoUrl) {
         photoUrl = record.photoUrl;
       }
@@ -937,6 +941,13 @@ export const syncService = {
       const cleaned = await attendanceRecordService.cleanupOldRecords(30);
       if (cleaned > 0) {
         console.log(`[SyncService] Cleaned up ${cleaned} old local records`);
+      }
+
+      // Backfill: libera photo_base64 acumulado en registros ya sincronizados
+      // por versiones previas que no limpiaban tras el upload.
+      const photosCleared = await attendanceRecordService.clearAllUploadedPhotos();
+      if (photosCleared > 0) {
+        console.log(`[SyncService] Backfilled photo_base64 cleanup for ${photosCleared} records`);
       }
 
       return {

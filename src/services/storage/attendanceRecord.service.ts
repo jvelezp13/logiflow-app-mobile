@@ -143,6 +143,67 @@ export const attendanceRecordService = {
     }
   },
 
+  // Libera el photo_base64 de un registro ya subido a Storage. La foto sigue
+  // accesible via photoUrl en Supabase; lo que se borra es la copia local en
+  // SQLite que infla la app data partition (critico en handhelds tipo Zebra
+  // con /data chico).
+  async clearPhotoBase64(recordId: string): Promise<void> {
+    try {
+      const record = await database
+        .get<AttendanceRecord>('attendance_records')
+        .find(recordId);
+
+      await database.write(async () => {
+        await record.update((rec) => {
+          rec.photoBase64 = '';
+        });
+      });
+    } catch (error) {
+      console.error('[AttendanceRecordService] clearPhotoBase64 error:', error);
+    }
+  },
+
+  // Backfill: limpia photo_base64 de TODOS los registros ya sincronizados que
+  // todavia tienen la copia local. Util en devices que llevan tiempo usando
+  // versiones previas sin el fix.
+  async clearAllUploadedPhotos(): Promise<number> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.where('photo_uploaded', true),
+          Q.where('photo_base64', Q.notEq('')),
+        )
+        .fetch();
+
+      if (records.length === 0) {
+        return 0;
+      }
+
+      const withBase64 = records.filter((r) => !!r.photoBase64);
+      if (withBase64.length === 0) {
+        return 0;
+      }
+
+      console.log(`[AttendanceRecordService] Backfilling photo_base64 cleanup for ${withBase64.length} records`);
+
+      await database.write(async () => {
+        await Promise.all(
+          withBase64.map((record) =>
+            record.update((rec) => {
+              rec.photoBase64 = '';
+            }),
+          ),
+        );
+      });
+
+      return withBase64.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] clearAllUploadedPhotos error:', error);
+      return 0;
+    }
+  },
+
   /**
    * Delete an attendance record
    */
