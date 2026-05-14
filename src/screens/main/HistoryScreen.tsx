@@ -17,12 +17,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@hooks/useAuth';
 import { useAttendanceRecords, type DateFilter } from '@hooks/useAttendanceRecords';
-import useCierres from '@hooks/useCierres';
 import { AttendanceCard } from '@components/AttendanceCard';
-import CierresList from '@components/cierres/CierresList';
 import type { AttendanceRecord } from '@services/storage';
 import type { NovedadInfo } from '@services/novedadesService';
-import type { CierreResumen } from '@/types/cierres.types';
 import { styles } from './HistoryScreen.styles';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -40,20 +37,11 @@ export const HistoryScreen: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
 
   // Pass userCedula to enable pulling records from Supabase
-  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, infraccionesTimestamps, onRefresh } = useAttendanceRecords(
+  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, onRefresh } = useAttendanceRecords(
     user?.id,
-    dateFilter === 'cierres' ? 'month' : dateFilter, // Use 'month' when on cierres tab
+    dateFilter,
     userCedula
   );
-
-  // Cierres hook
-  const {
-    cierres,
-    loading: cierresLoading,
-    refreshing: cierresRefreshing,
-    isOffline: cierresOffline,
-    onRefresh: cierresOnRefresh,
-  } = useCierres(userCedula);
 
   /**
    * Get novedad info for a record (id + estado)
@@ -94,18 +82,6 @@ export const HistoryScreen: React.FC = () => {
       });
     }
   }, [navigation, getNovedadInfo]);
-
-  /**
-   * Handle tap on cierre card
-   */
-  const handleCierrePress = useCallback((cierre: CierreResumen) => {
-    navigation.navigate('Cierres', {
-      screen: 'DetalleCierre',
-      params: {
-        cierreId: cierre.id,
-      },
-    });
-  }, [navigation]);
 
   /**
    * Group records by date for SectionList
@@ -211,7 +187,6 @@ export const HistoryScreen: React.FC = () => {
     <AttendanceCard
       record={item}
       adjustmentStatus={getNovedadInfo(item)?.estado}
-      hasInfraction={infraccionesTimestamps.has(item.timestamp)}
       onPress={handleRecordPress}
     />
   );
@@ -223,38 +198,25 @@ export const HistoryScreen: React.FC = () => {
         {renderFilterButton('today', 'Hoy')}
         {renderFilterButton('week', 'Semana')}
         {renderFilterButton('month', 'Mes')}
-        {renderFilterButton('cierres', 'Cierres')}
       </View>
 
-      {/* List - conditional rendering based on filter */}
       <View style={styles.content}>
-        {dateFilter === 'cierres' ? (
-          <CierresList
-            cierres={cierres}
-            onCierrePress={handleCierrePress}
-            loading={cierresLoading}
-            refreshing={cierresRefreshing}
-            isOffline={cierresOffline}
-            onRefresh={cierresOnRefresh}
-          />
-        ) : (
-          <SectionList
-            sections={sections}
-            renderItem={renderItem}
-            renderSectionHeader={renderSectionHeader}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.list}
-            ListEmptyComponent={renderEmpty}
-            stickySectionHeadersEnabled={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={onRefresh}
-                title="Actualizando..."
-              />
-            }
-          />
-        )}
+        <SectionList
+          sections={sections}
+          renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={renderEmpty}
+          stickySectionHeadersEnabled={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              title="Actualizando..."
+            />
+          }
+        />
       </View>
     </SafeAreaView>
   );

@@ -5,7 +5,6 @@ import novedadesService, {
   type Novedad,
   type TipoNovedad,
   type EstadoNovedad,
-  type EstadisticasNovedades,
 } from '../services/novedadesService';
 
 // =====================================================
@@ -17,12 +16,10 @@ export const useNovedades = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [estadisticas, setEstadisticas] = useState<EstadisticasNovedades>({
+  const [estadisticas, setEstadisticas] = useState({
     pendientes: 0,
     aprobadas: 0,
     rechazadas: 0,
-    abiertas: 0,
-    revisadas: 0,
     total: 0,
   });
 
@@ -49,10 +46,7 @@ export const useNovedades = () => {
   /**
    * Carga las novedades del usuario
    */
-  const cargarNovedades = useCallback(async (
-    filtroEstado?: EstadoNovedad,
-    filtroTipo?: TipoNovedad,
-  ) => {
+  const cargarNovedades = useCallback(async (filtroEstado?: EstadoNovedad) => {
     try {
       if (!isMountedRef.current) return;
       setLoading(true);
@@ -65,7 +59,7 @@ export const useNovedades = () => {
         return;
       }
 
-      const data = await novedadesService.obtenerNovedades(filtroEstado, filtroTipo);
+      const data = await novedadesService.obtenerNovedades(filtroEstado);
       if (!isMountedRef.current) return;
       setNovedades(data);
     } catch (err) {

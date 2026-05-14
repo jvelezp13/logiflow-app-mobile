@@ -18,7 +18,6 @@ import { COLORS } from '@constants/theme';
 export type AttendanceCardProps = {
   record: AttendanceRecord;
   adjustmentStatus?: AjusteEstado;
-  hasInfraction?: boolean;
   onPress?: (record: AttendanceRecord) => void;
 };
 
@@ -50,7 +49,6 @@ const STATUS_CONFIG = {
 const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
   record,
   adjustmentStatus,
-  hasInfraction = false,
   onPress
 }) => {
   const isClockIn = record.attendanceType === 'clock_in';
@@ -134,7 +132,6 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
       {showSyncStatus && <Text style={styles.syncIcon}>{syncIcon}</Text>}
       {renderAdminBadge()}
       {renderStatusBadge()}
-      {hasInfraction && <View style={styles.infractionDot} />}
       <MaterialCommunityIcons
         name="chevron-right"
         size={20}

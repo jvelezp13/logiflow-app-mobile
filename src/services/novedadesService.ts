@@ -65,15 +65,6 @@ export interface AjusteMarcajeResult {
   error?: string;
 }
 
-export interface EstadisticasNovedades {
-  pendientes: number;
-  aprobadas: number;
-  rechazadas: number;
-  abiertas: number;
-  revisadas: number;
-  total: number;
-}
-
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
   ajuste_marcaje: 'Ajuste de marcaje',
   exceso_tope_diario: 'Exceso de tope diario',
@@ -266,10 +257,7 @@ class NovedadesService {
     }
   }
 
-  async obtenerNovedades(
-    filtroEstado?: EstadoNovedad,
-    filtroTipo?: TipoNovedad,
-  ): Promise<Novedad[]> {
+  async obtenerNovedades(filtroEstado?: EstadoNovedad): Promise<Novedad[]> {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -281,13 +269,11 @@ class NovedadesService {
         .from('horarios_novedades')
         .select('*')
         .eq('user_id', user.id)
+        .eq('tipo_novedad', 'ajuste_marcaje')
         .order('created_at', { ascending: false });
 
       if (filtroEstado) {
         query = query.eq('estado', filtroEstado);
-      }
-      if (filtroTipo) {
-        query = query.eq('tipo_novedad', filtroTipo);
       }
 
       const { data, error } = await query;
@@ -327,16 +313,12 @@ class NovedadesService {
     }
   }
 
-  async obtenerEstadisticas(): Promise<EstadisticasNovedades> {
-    const empty: EstadisticasNovedades = {
-      pendientes: 0,
-      aprobadas: 0,
-      rechazadas: 0,
-      abiertas: 0,
-      revisadas: 0,
-      total: 0,
-    };
-
+  async obtenerEstadisticas(): Promise<{
+    pendientes: number;
+    aprobadas: number;
+    rechazadas: number;
+    total: number;
+  }> {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -347,28 +329,24 @@ class NovedadesService {
       const { data, error } = await supabase
         .from('horarios_novedades')
         .select('estado')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('tipo_novedad', 'ajuste_marcaje');
 
       if (error) {
         console.error('Error obteniendo estadísticas:', error);
-        return empty;
+        return { pendientes: 0, aprobadas: 0, rechazadas: 0, total: 0 };
       }
 
       const rows = (data ?? []) as { estado: EstadoNovedad }[];
-      return rows.reduce<EstadisticasNovedades>((acc, { estado }) => {
-        acc.total += 1;
-        switch (estado) {
-          case 'pendiente': acc.pendientes += 1; break;
-          case 'aprobada': acc.aprobadas += 1; break;
-          case 'rechazada': acc.rechazadas += 1; break;
-          case 'abierta': acc.abiertas += 1; break;
-          case 'revisada': acc.revisadas += 1; break;
-        }
-        return acc;
-      }, empty);
+      return {
+        pendientes: rows.filter(n => n.estado === 'pendiente').length,
+        aprobadas: rows.filter(n => n.estado === 'aprobada').length,
+        rechazadas: rows.filter(n => n.estado === 'rechazada').length,
+        total: rows.length,
+      };
     } catch (error) {
       console.error('Error en obtenerEstadisticas:', error);
-      return empty;
+      return { pendientes: 0, aprobadas: 0, rechazadas: 0, total: 0 };
     }
   }
 
@@ -387,7 +365,9 @@ class NovedadesService {
           filter: `user_id=eq.${userId}`
         },
         (payload) => {
-          callback(payload.new as Novedad);
+          const nuevaNovedad = payload.new as Novedad;
+          if (nuevaNovedad.tipo_novedad !== 'ajuste_marcaje') return;
+          callback(nuevaNovedad);
         }
       )
       .subscribe();
@@ -451,45 +431,6 @@ class NovedadesService {
     }
   }
 
-  async obtenerInfraccionesPorTimestamp(): Promise<Set<number>> {
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        return new Set();
-      }
-
-      const { data, error } = await supabase
-        .from('horarios_novedades')
-        .select(`
-          marcaje_id,
-          horarios_registros_diarios!horarios_novedades_marcaje_id_fkey(timestamp_local)
-        `)
-        .eq('user_id', user.id)
-        .eq('tipo_novedad', 'exceso_tope_diario')
-        .not('marcaje_id', 'is', null) as {
-          data: Array<{
-            marcaje_id: number;
-            horarios_registros_diarios: { timestamp_local: number } | null;
-          }> | null;
-          error: unknown;
-        };
-
-      if (error) {
-        console.error('Error obteniendo infracciones por timestamp:', error);
-        return new Set();
-      }
-
-      return new Set(
-        (data ?? [])
-          .map((r) => r.horarios_registros_diarios?.timestamp_local)
-          .filter((ts): ts is number => typeof ts === 'number'),
-      );
-    } catch (error) {
-      console.error('Error en obtenerInfraccionesPorTimestamp:', error);
-      return new Set();
-    }
-  }
 }
 
 export default new NovedadesService();

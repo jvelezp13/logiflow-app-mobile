@@ -21,13 +21,6 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  infractionDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#EF4444',
-    marginLeft: SPACING.xs,
-  },
   icon: {
     fontSize: FONT_SIZES.lg,
     marginRight: SPACING.sm,

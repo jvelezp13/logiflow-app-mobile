@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { FlatList, View, Text, StyleSheet, RefreshControl, ActivityIndicator, ListRenderItem } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NovedadCard from './NovedadCard';
@@ -7,11 +7,7 @@ import type { Novedad, EstadoNovedad } from '../../services/novedadesService';
 interface NovedadesListProps {
   novedades: Novedad[];
   onNovedadPress: (novedad: Novedad) => void;
-  /**
-   * Cuándo la lista está vacía, qué mensaje contextual mostrar.
-   * Usar el estado del chip activo (ej. 'pendiente') o `undefined` para el mensaje genérico.
-   */
-  emptyEstado?: EstadoNovedad;
+  filtroEstado?: EstadoNovedad;
   refreshing?: boolean;
   onRefresh?: () => void;
   loading?: boolean;
@@ -20,20 +16,24 @@ interface NovedadesListProps {
 
 /**
  * NovedadesList Component
- *
- * NOTA: Esta lista es "tonta": espera recibir `novedades` ya filtradas
- * por el padre (tipo + estado). No filtra internamente.
- * OPTIMIZED: useCallback for renderItem
+ * OPTIMIZED: useCallback for renderItem, useMemo for filtered data
  */
 const NovedadesList: React.FC<NovedadesListProps> = ({
   novedades,
   onNovedadPress,
-  emptyEstado,
+  filtroEstado,
   refreshing = false,
   onRefresh,
   loading = false,
   isOffline = false,
 }) => {
+  // Memoize filtered data to prevent recalculation on each render
+  const novedadesFiltradas = useMemo(() => {
+    return filtroEstado
+      ? novedades.filter(n => n.estado === filtroEstado)
+      : novedades;
+  }, [novedades, filtroEstado]);
+
   const renderEmpty = () => {
     if (loading) {
       return (
@@ -62,11 +62,11 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
       );
     }
 
-    const mensaje = emptyEstado
-      ? getEmptyMessageForEstado(emptyEstado)
+    const mensaje = filtroEstado
+      ? getEmptyMessageForEstado(filtroEstado)
       : '¡No has reportado ninguna novedad todavía!';
 
-    const submensaje = emptyEstado
+    const submensaje = filtroEstado
       ? ''
       : 'Presiona el botón + para reportar tu primera novedad.';
 
@@ -132,12 +132,12 @@ const NovedadesList: React.FC<NovedadesListProps> = ({
 
   return (
     <FlatList
-      data={novedades}
+      data={novedadesFiltradas}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
       contentContainerStyle={[
         styles.listContent,
-        novedades.length === 0 && styles.listContentEmpty,
+        novedadesFiltradas.length === 0 && styles.listContentEmpty,
       ]}
       ListEmptyComponent={renderEmpty}
       ListHeaderComponent={loading ? renderSkeleton : null}
