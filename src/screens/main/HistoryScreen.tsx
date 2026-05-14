@@ -15,7 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useAuth } from '@hooks/useAuth';
 import { useAttendanceRecords, type DateFilter } from '@hooks/useAttendanceRecords';
 import { AttendanceCard } from '@components/AttendanceCard';
@@ -56,27 +56,42 @@ export const HistoryScreen: React.FC = () => {
   //   pendiente          → DetalleNovedad (no se puede crear otra, lo bloquea la
   //                        UNIQUE constraint en DB y se traduce al usuario)
   //   aprobada/rechazada → Alert con opciones (ver detalle vs nuevo ajuste)
+  //
+  // Cada navigate hace reset del stack interno de Novedades para que el back
+  // siempre vuelva al Historial. popToTopOnBlur en el tab no era suficiente:
+  // si el user entraba a SolicitarAjuste y despues volvia a Historial sin que
+  // el blur disparara (caso con tab oculto), la stack quedaba residual y el
+  // siguiente navigate apilaba encima.
+  const navegarLimpio = (screen: string, params: Record<string, unknown>) => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'Novedades',
+        params: {
+          screen,
+          params,
+          // initial: false fuerza que el navigate empiece una pila nueva con
+          // la screen indicada como root.
+          initial: false,
+        },
+      }),
+    );
+  };
+
   const handleRecordPress = useCallback((record: AttendanceRecord) => {
     const novedadInfo = getNovedadInfo(record);
     const horaActual = record.time.slice(0, 5);
 
     const irASolicitar = () => {
-      navigation.navigate('Novedades', {
-        screen: 'SolicitarAjuste',
-        params: {
-          marcajeId: record.timestamp,
-          fecha: record.date,
-          tipo: record.attendanceType,
-          horaActual,
-        },
+      navegarLimpio('SolicitarAjuste', {
+        marcajeId: record.timestamp,
+        fecha: record.date,
+        tipo: record.attendanceType,
+        horaActual,
       });
     };
 
     const irADetalle = (novedadId: string) => {
-      navigation.navigate('Novedades', {
-        screen: 'DetalleNovedad',
-        params: { novedadId },
-      });
+      navegarLimpio('DetalleNovedad', { novedadId });
     };
 
     if (!novedadInfo) {

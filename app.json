@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "LogiFlow Marcaje",
+    "name": "LogiFlow Marcaje 2.1.1",
     "slug": "logiflow-marcaje",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.logiflow.controlhorario",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#059669"
