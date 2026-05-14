@@ -59,8 +59,7 @@
             ]
           }
         }
-      ],
-      "./plugins/withCustomApkName"
+      ]
     ],
     "extra": {
       "eas": {
