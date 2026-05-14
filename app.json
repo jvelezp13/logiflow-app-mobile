@@ -23,10 +23,10 @@
     },
     "android": {
       "package": "com.logiflow.controlhorario",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#059669"
       },
       "permissions": [
         "CAMERA",

@@ -399,6 +399,11 @@ class NovedadesService {
         return new Map();
       }
 
+      // ORDER BY created_at DESC + skip si ya hay entry para ese timestamp:
+      // si un marcaje tiene varias novedades historicas (por ejemplo aprobadas y
+      // luego una rechazada nueva), nos quedamos con la mas reciente. Sin orden
+      // explicito Postgrest puede devolverlas en cualquier orden y el badge mostrar
+      // un estado obsoleto.
       const { data, error } = await supabase
         .from('horarios_novedades')
         .select(`
@@ -409,7 +414,8 @@ class NovedadesService {
         `)
         .eq('user_id', user.id)
         .eq('tipo_novedad', 'ajuste_marcaje')
-        .not('marcaje_id', 'is', null) as {
+        .not('marcaje_id', 'is', null)
+        .order('created_at', { ascending: false }) as {
           data: Array<{
             id: string;
             estado: string;
@@ -426,8 +432,9 @@ class NovedadesService {
 
       const map = new Map<number, NovedadInfo>();
       for (const item of data || []) {
-        if (item.horarios_registros_diarios?.timestamp_local) {
-          map.set(item.horarios_registros_diarios.timestamp_local, {
+        const ts = item.horarios_registros_diarios?.timestamp_local;
+        if (ts && !map.has(ts)) {
+          map.set(ts, {
             id: item.id,
             estado: item.estado as AjusteEstado,
           });

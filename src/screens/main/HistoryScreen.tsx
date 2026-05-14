@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -50,27 +51,16 @@ export const HistoryScreen: React.FC = () => {
     return novedadesInfo.get(record.timestamp);
   }, [novedadesInfo]);
 
-  /**
-   * Handle tap on attendance record
-   * If novedad exists -> show detail
-   * If no novedad -> navigate to adjustment request
-   */
+  // Flujo por estado de novedad del marcaje:
+  //   sin novedad        → SolicitarAjuste directo
+  //   pendiente          → DetalleNovedad (no se puede crear otra, lo bloquea la
+  //                        UNIQUE constraint en DB y se traduce al usuario)
+  //   aprobada/rechazada → Alert con opciones (ver detalle vs nuevo ajuste)
   const handleRecordPress = useCallback((record: AttendanceRecord) => {
     const novedadInfo = getNovedadInfo(record);
+    const horaActual = record.time.slice(0, 5);
 
-    if (novedadInfo) {
-      // Novedad exists - navigate to detail view
-      navigation.navigate('Novedades', {
-        screen: 'DetalleNovedad',
-        params: {
-          novedadId: novedadInfo.id,
-        },
-      });
-    } else {
-      // No novedad - navigate to adjustment request form
-      // Usar record.time (formato 24h HH:mm:ss) y extraer solo HH:mm
-      const horaActual = record.time.slice(0, 5);
-
+    const irASolicitar = () => {
       navigation.navigate('Novedades', {
         screen: 'SolicitarAjuste',
         params: {
@@ -80,7 +70,36 @@ export const HistoryScreen: React.FC = () => {
           horaActual,
         },
       });
+    };
+
+    const irADetalle = (novedadId: string) => {
+      navigation.navigate('Novedades', {
+        screen: 'DetalleNovedad',
+        params: { novedadId },
+      });
+    };
+
+    if (!novedadInfo) {
+      irASolicitar();
+      return;
     }
+
+    if (novedadInfo.estado === 'pendiente') {
+      irADetalle(novedadInfo.id);
+      return;
+    }
+
+    Alert.alert(
+      'Marcaje con ajuste',
+      novedadInfo.estado === 'aprobada'
+        ? 'Este marcaje ya tiene un ajuste aprobado. ¿Qué querés hacer?'
+        : 'Tu solicitud anterior para este marcaje fue rechazada. ¿Qué querés hacer?',
+      [
+        { text: 'Ver detalle', onPress: () => irADetalle(novedadInfo.id) },
+        { text: 'Solicitar nuevo ajuste', onPress: irASolicitar },
+        { text: 'Cancelar', style: 'cancel' },
+      ],
+    );
   }, [navigation, getNovedadInfo]);
 
   /**
