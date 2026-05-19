@@ -427,23 +427,113 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Get count of pending sync records
+   * Cuenta los registros que el sync automatico aun procesa (attempts < 10).
+   * Debe coincidir con el criterio de getPendingSync para que el badge "X pendientes"
+   * no muestre huerfanos invisibles al pipeline.
    */
   async getPendingSyncCount(): Promise<number> {
     try {
       const count = await database
         .get<AttendanceRecord>('attendance_records')
         .query(
-          Q.or(
-            Q.where('sync_status', 'pending'),
-            Q.where('sync_status', 'error'),
-            Q.where('sync_status', 'syncing')
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.where('sync_attempts', Q.lt(10))
           )
         )
         .fetchCount();
       return count;
     } catch (error) {
       console.error('[AttendanceRecordService] Get pending sync count error:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Cuenta los registros huerfanos (attempts >= 10) que el sync automatico
+   * descarto. Necesitan recuperacion manual via recoverStuckRecords().
+   */
+  async getStuckRecordsCount(): Promise<number> {
+    try {
+      const count = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.where('sync_attempts', Q.gte(10))
+          )
+        )
+        .fetchCount();
+      return count;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get stuck records count error:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Trae los huerfanos (attempts >= 10) para reporting/recuperacion.
+   */
+  async getStuckRecords(): Promise<AttendanceRecord[]> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.where('sync_attempts', Q.gte(10))
+          ),
+          Q.sortBy('timestamp', Q.asc)
+        )
+        .fetch();
+      return records;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get stuck records error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Resetea registros huerfanos a 'pending' con attempts=0 para que vuelvan al
+   * pipeline de sync. Usado por el boton de "Diagnosticar y Reparar" en Settings.
+   * Devuelve la cantidad reseteada.
+   */
+  async recoverStuckRecords(): Promise<number> {
+    try {
+      const stuck = await this.getStuckRecords();
+      if (stuck.length === 0) {
+        return 0;
+      }
+
+      console.log(`[AttendanceRecordService] Recovering ${stuck.length} stuck records`);
+
+      await database.write(async () => {
+        await Promise.all(
+          stuck.map((record) =>
+            record.update((rec) => {
+              rec.attendanceSyncStatus = 'pending';
+              rec.syncAttempts = 0;
+              rec.syncError = undefined;
+            })
+          )
+        );
+      });
+
+      return stuck.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] recoverStuckRecords error:', error);
       return 0;
     }
   },

@@ -35,11 +35,34 @@ export type SyncResult = {
 };
 
 /**
- * Sync verification result
+ * Resultado del diagnóstico completo de sincronización.
+ *
+ * Tres dimensiones del estado:
+ * - processableCount: registros que el sync automatico procesa cada 30s (attempts<10)
+ * - stuckRecords: registros huerfanos (attempts>=10) que necesitan recuperacion manual
+ * - orphanedRecords: registros marcados 'synced' localmente pero ausentes en Supabase
+ *
+ * Las tres dimensiones son disjuntas; el total de "problemas" es:
+ *   processableCount + stuckRecords.length + orphanedRecords.length
  */
 export type SyncVerificationResult = {
+  // Locales marcados 'synced' (terminaron OK) — base para calcular orphans.
   totalLocalSynced: number;
+  // Cuántos de esos están en Supabase. Si < totalLocalSynced → hay orphans.
   totalInSupabase: number;
+  // Pendientes que el batch automatico ya esta procesando (no requiere accion).
+  processableCount: number;
+  // Atrapados (attempts >= 10) que el batch ya descarto — necesitan recuperacion manual.
+  stuckRecords: Array<{
+    id: string;
+    timestamp: number;
+    date: string;
+    time: string;
+    type: string;
+    syncAttempts: number;
+    syncError?: string;
+  }>;
+  // Locales 'synced' que NO existen en Supabase (sync_status mintio en versiones viejas).
   orphanedRecords: Array<{
     id: string;
     timestamp: number;
@@ -132,33 +155,40 @@ export const syncService = {
   },
 
   /**
-   * Upload photo AND insert record via Edge Function (for kiosk mode)
-   * Uses PIN-based authentication instead of user session
-   * The Edge Function handles both photo upload AND database INSERT using service_role
+   * Llama al Edge Function de kiosko (upload-kiosk-photo).
+   * Sirve para los dos modos:
+   *   - Primer intento: si record.photoBase64 existe, se manda y la EF sube la foto.
+   *   - Retry post-upload: si solo existe record.photoUrl, se manda esa y la EF
+   *     skipea el upload y solo (re)intenta el INSERT.
+   *
+   * Requiere que el deploy de la Edge Function soporte el campo opcional photoUrl
+   * (versión deployada desde 2026-05-19).
    *
    * @param record - Full attendance record
    * @param pin - 4-digit PIN code
    * @returns Object with photoUrl and whether record was inserted, or null on error
    */
-  async uploadAndInsertViaEdgeFunction(
+  async callKioskEdgeFunction(
     record: AttendanceRecord,
     pin: string
   ): Promise<{ photoUrl: string; recordInserted: boolean } | null> {
     try {
-      console.log('[SyncService] Uploading photo AND inserting record via Edge Function (kiosk mode)');
+      const mode = record.photoBase64 ? 'upload+insert' : 'insert-only';
+      console.log(`[SyncService] Calling kiosk Edge Function (${mode})`);
 
-      // Get Supabase anon key for authorization
       const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-      // Obtener tenant_id: primero del registro local, luego del store
       const tenantId = record.tenantId || getTenantId();
-
       if (!tenantId) {
         console.error('[SyncService] Cannot sync kiosk record without tenant_id');
         return null;
       }
 
-      // Preparar datos del registro para INSERT
+      if (!record.photoBase64 && !record.photoUrl) {
+        console.error('[SyncService] Cannot sync kiosk record: no photoBase64 nor photoUrl');
+        return null;
+      }
+
       const recordData = {
         empleado: record.userName,
         cedula: record.userCedula,
@@ -175,7 +205,14 @@ export const syncService = {
         tenant_id: tenantId,
       };
 
-      // Call Edge Function con timeout y retry
+      // PRIORIDAD: photoUrl > photoBase64.
+      // Si ya tenemos photoUrl persistida (de un intento previo), nunca re-subir la foto:
+      // mandamos esa URL y la Edge Function hace solo el INSERT.
+      // Esto evita duplicar archivos en Storage cuando hay retries.
+      const photoPayload = record.photoUrl
+        ? { photoUrl: record.photoUrl }
+        : { photoBase64: record.photoBase64 };
+
       const response = await fetchWithRetry(
         EDGE_FUNCTION_URL,
         {
@@ -187,20 +224,20 @@ export const syncService = {
           },
           body: JSON.stringify({
             pin,
-            photoBase64: record.photoBase64,
+            ...photoPayload,
             userId: record.userId,
             recordId: record.id,
-            recordData, // Datos completos para INSERT
+            recordData,
           }),
         },
         {
           onRetry: (attempt) =>
-            console.log(`[SyncService] Retry upload kiosk (${attempt})`),
+            console.log(`[SyncService] Retry kiosk EF (${attempt})`),
         }
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         console.error('[SyncService] Edge Function error:', errorData);
         return null;
       }
@@ -208,7 +245,7 @@ export const syncService = {
       const result = await response.json();
 
       if (result.success && result.photoUrl) {
-        console.log('[SyncService] Photo uploaded and record inserted via Edge Function:', {
+        console.log('[SyncService] Kiosk EF success:', {
           photoUrl: result.photoUrl,
           recordInserted: result.recordInserted,
         });
@@ -216,12 +253,12 @@ export const syncService = {
           photoUrl: result.photoUrl,
           recordInserted: result.recordInserted === true,
         };
-      } else {
-        console.error('[SyncService] Edge Function returned no URL:', result);
-        return null;
       }
+
+      console.error('[SyncService] Edge Function returned no URL:', result);
+      return null;
     } catch (error) {
-      console.error('[SyncService] Upload via Edge Function error:', error);
+      console.error('[SyncService] Kiosk EF exception:', error);
       return null;
     }
   },
@@ -359,18 +396,47 @@ export const syncService = {
   },
 
   /**
-   * Process single attendance record (upload photo + sync)
+   * Procesa un registro: sube foto (si aún no la tiene) + INSERT en BD.
    *
-   * @param record - Attendance record
-   * @returns Sync result
+   * Contrato de estado al terminar:
+   *   - Éxito → markAsSynced (status='synced', photoUploaded=true, syncedAt, base64 limpio).
+   *   - Sin red → markAsPending (revierte 'syncing' a 'pending', NO incrementa attempts).
+   *   - Sin credenciales (sin sesión ni PIN) → markAsOrphan (attempts=999).
+   *   - Cualquier otro fallo → markAsSyncError (status='error', attempts++).
+   *
+   * Garantías:
+   *   - El registro NUNCA queda en 'syncing' al finalizar (esa era la causa del loop
+   *     infinito en versiones <=2.1.1).
+   *   - photoUrl se persiste apenas la foto sube — el retry no re-sube (evita
+   *     archivos duplicados en Storage).
+   *   - photoUploaded=true + clearPhotoBase64 solo ocurre tras INSERT exitoso —
+   *     esto permite recuperar el registro si solo falla el INSERT.
    */
   async processRecord(record: AttendanceRecord): Promise<SyncResult> {
+    // Marca error + incrementa attempts. Usado en todos los paths de fallo
+    // legítimo dentro del try (los errores transientes que NO penalizan attempts,
+    // como falta de red, se manejan aparte).
+    const fail = async (errorMsg: string): Promise<SyncResult> => {
+      try {
+        await attendanceRecordService.markAsSyncError(record.id, errorMsg);
+      } catch (markErr) {
+        console.error('[SyncService] markAsSyncError failed:', markErr);
+      }
+      return { success: false, recordId: record.id, error: errorMsg };
+    };
+
     try {
       console.log('[SyncService] Processing record:', record.id);
 
-      // Check network
+      // 1. Network: si no hay red, revertimos a 'pending' y no penalizamos attempts —
+      //    no es culpa del registro y queremos que reintente en el próximo trigger.
       const hasNetwork = await checkNetworkStatus();
       if (!hasNetwork) {
+        try {
+          await attendanceRecordService.markAsPending(record.id);
+        } catch (revertErr) {
+          console.error('[SyncService] Revert to pending failed:', revertErr);
+        }
         return {
           success: false,
           recordId: record.id,
@@ -378,16 +444,13 @@ export const syncService = {
         };
       }
 
-      // Validar si el registro tiene credenciales válidas para sincronizar
-      // - Modo normal: requiere sesión de Supabase activa
-      // - Modo kiosco: requiere kioskPin guardado en el registro
+      // 2. Credenciales: modo normal necesita sesión Supabase; modo kiosko necesita PIN.
       const supabaseSession = await supabase.auth.getSession();
       const hasActiveSession = !!supabaseSession.data.session;
       const hasKioskPin = !!record.kioskPin;
 
-      // Si no hay sesión ni PIN, es un registro huérfano (no recuperable)
       if (!hasActiveSession && !hasKioskPin) {
-        console.error('[SyncService] Registro huérfano detectado: sin sesión ni PIN', {
+        console.error('[SyncService] Registro huérfano: sin sesión ni PIN', {
           recordId: record.id,
           date: record.date,
           time: record.time,
@@ -401,108 +464,72 @@ export const syncService = {
         };
       }
 
-      let photoUrl: string | undefined;
-      let recordAlreadyInserted = false;
+      const isKiosko = hasKioskPin && !!record.kioskPin;
+      let photoUrl: string | undefined = record.photoUrl || undefined;
 
-      // Upload photo if needed
-      if (record.needsPhotoUpload && record.photoBase64) {
-        console.log('[SyncService] Uploading photo for record:', record.id);
+      // 3. Camino kiosko: una sola llamada a la Edge Function por ejecución.
+      //    La EF decide automáticamente entre "upload+insert" (foto base64) o
+      //    "insert-only" (foto URL ya existente) según lo que persistamos en el record.
+      //    Si el INSERT falla, retornamos error con la photoUrl ya persistida —
+      //    el siguiente trigger del sync (30s) llamará la EF en modo insert-only.
+      if (isKiosko) {
+        if (!record.photoBase64 && !photoUrl) {
+          return fail('Kiosko sin foto local ni URL subida — irrecuperable');
+        }
 
-        // Check if kiosk mode using PIN from record (persisted during creation)
-        const hasKioskPinForUpload = !!record.kioskPin;
+        const edgeResult = await this.callKioskEdgeFunction(record, record.kioskPin!);
+        if (!edgeResult) {
+          return fail('Edge Function (kiosko) falló');
+        }
 
-        console.log('[SyncService] Checking upload mode:', {
-          hasKioskPin: hasKioskPinForUpload,
-          recordId: record.id,
-        });
+        // Persistir photoUrl si la EF subió foto en esta llamada (primer intento).
+        // En retries la photoUrl ya estaba persistida y la EF devuelve la misma.
+        if (edgeResult.photoUrl && edgeResult.photoUrl !== record.photoUrl) {
+          await attendanceRecordService.update(record.id, { photoUrl: edgeResult.photoUrl });
+        }
+        photoUrl = edgeResult.photoUrl;
 
-        if (hasKioskPinForUpload && record.kioskPin) {
-          // Use Edge Function for kiosk mode - this also inserts the record
-          console.log('[SyncService] Using Edge Function for kiosk mode (photo + INSERT)');
-          const edgeResult = await this.uploadAndInsertViaEdgeFunction(
-            record,
-            record.kioskPin
-          );
-
-          if (edgeResult) {
-            photoUrl = edgeResult.photoUrl;
-            recordAlreadyInserted = edgeResult.recordInserted;
-            console.log('[SyncService] Edge Function result:', {
-              photoUrl,
-              recordAlreadyInserted,
-            });
-          }
-        } else {
-          // Use direct upload for authenticated mode
-          console.log('[SyncService] Using direct upload for authenticated mode');
-          photoUrl = (await this.uploadPhoto(
+        if (!edgeResult.recordInserted) {
+          // Foto subida pero INSERT falló del lado de la EF. La photoUrl quedó
+          // persistida, así que el siguiente trigger reintentará en modo insert-only.
+          return fail('Edge Function reportó INSERT no realizado');
+        }
+      } else {
+        // 4. Camino normal (sesión Supabase activa): upload de foto + INSERT separados.
+        if (!photoUrl && record.photoBase64) {
+          const uploadedUrl = await this.uploadPhoto(
             record.id,
             record.photoBase64,
             record.userId
-          )) || undefined;
+          );
+          if (!uploadedUrl) {
+            return fail('Error al subir foto');
+          }
+          photoUrl = uploadedUrl;
+          // Persistir photoUrl ANTES de intentar el INSERT — así si el INSERT falla,
+          // el retry no re-sube la foto.
+          await attendanceRecordService.update(record.id, { photoUrl });
         }
-
-        if (!photoUrl) {
-          return {
-            success: false,
-            recordId: record.id,
-            error: 'Error al subir foto',
-          };
-        }
-
-        // Update record with photo URL
-        await attendanceRecordService.update(record.id, {
-          photoUrl,
-          photoUploaded: true,
-        });
-        // Libera la copia base64 local: la foto vive en Supabase Storage. Sin
-        // esto el SQLite crece ~270KB por marcaje y satura /data en handhelds
-        // tipo Zebra con app data partition chica.
-        await attendanceRecordService.clearPhotoBase64(record.id);
-      } else if (record.photoUrl) {
-        photoUrl = record.photoUrl;
-      }
-
-      // Sync record to Supabase (only if Edge Function didn't already insert it)
-      if (!recordAlreadyInserted) {
-        console.log('[SyncService] Syncing record to Supabase:', record.id);
 
         const syncSuccess = await this.syncRecord(record, photoUrl);
-
         if (!syncSuccess) {
-          return {
-            success: false,
-            recordId: record.id,
-            error: 'Error al sincronizar datos',
-          };
+          return fail('Error al sincronizar datos');
         }
-      } else {
-        console.log('[SyncService] Record already inserted by Edge Function, skipping syncRecord');
       }
 
-      // Mark as synced
+      // 5. Confirmar éxito: status='synced', photoUploaded=true, syncedAt, base64 liberado.
+      //    Solo llegamos acá si TODO el flujo (upload + INSERT) fue exitoso.
       await attendanceRecordService.markAsSynced(record.id, photoUrl);
+      if (record.photoBase64) {
+        await attendanceRecordService.clearPhotoBase64(record.id);
+      }
 
       console.log('[SyncService] Record synced successfully:', record.id);
-
-      return {
-        success: true,
-        recordId: record.id,
-      };
+      return { success: true, recordId: record.id };
     } catch (error) {
-      console.error('[SyncService] Process record error:', error);
-
-      const errorMessage =
-        error instanceof Error ? error.message : 'Error desconocido';
-
-      // Mark as error
-      await attendanceRecordService.markAsSyncError(record.id, errorMessage);
-
-      return {
-        success: false,
-        recordId: record.id,
-        error: errorMessage,
-      };
+      console.error('[SyncService] Process record exception:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      return fail(errorMessage);
     }
   },
 
@@ -654,78 +681,98 @@ export const syncService = {
     try {
       console.log('[SyncService] Starting sync integrity verification...');
 
-      // Check network
+      // Sin red no podemos comparar contra Supabase para detectar orphans.
       const hasNetwork = await checkNetworkStatus();
       if (!hasNetwork) {
         throw new Error('Sin conexión a Internet');
       }
 
-      // Get all local records marked as synced
+      // Dimension 1: pendientes que el batch automatico aun procesa (informativo).
+      const processableCount = await attendanceRecordService.getPendingSyncCount();
+
+      // Dimension 2: huerfanos (attempts>=10) que el batch ya descarto.
+      const stuck = await attendanceRecordService.getStuckRecords();
+      const stuckRecords = stuck.map((r) => ({
+        id: r.id,
+        timestamp: r.timestamp,
+        date: r.date,
+        time: r.time,
+        type: r.attendanceType,
+        syncAttempts: r.syncAttempts,
+        syncError: r.syncError,
+      }));
+
+      // Dimension 3: locales 'synced' que NO existen en Supabase (orphans).
       const localSyncedRecords = await attendanceRecordService.getSyncedRecords();
       console.log(`[SyncService] Found ${localSyncedRecords.length} local records marked as synced`);
 
-      if (localSyncedRecords.length === 0) {
-        return {
-          totalLocalSynced: 0,
-          totalInSupabase: 0,
-          orphanedRecords: [],
-          repairedCount: 0,
-        };
+      let totalInSupabase = 0;
+      let orphanedRecords: SyncVerificationResult['orphanedRecords'] = [];
+
+      if (localSyncedRecords.length > 0) {
+        const localTimestamps = localSyncedRecords.map((r) => r.timestamp);
+
+        const { data: remoteRecords, error: queryError } = await supabase
+          .from('horarios_registros_diarios')
+          .select('timestamp_local')
+          .in('timestamp_local', localTimestamps);
+
+        if (queryError) {
+          console.error('[SyncService] Supabase query error:', queryError);
+          throw new Error('Error al consultar Supabase');
+        }
+
+        const remoteTimestamps = new Set(
+          (remoteRecords || []).map((r: { timestamp_local: number }) => r.timestamp_local)
+        );
+        totalInSupabase = remoteTimestamps.size;
+
+        orphanedRecords = localSyncedRecords
+          .filter((r) => !remoteTimestamps.has(r.timestamp))
+          .map((r) => ({
+            id: r.id,
+            timestamp: r.timestamp,
+            date: r.date,
+            time: r.time,
+            type: r.attendanceType,
+          }));
       }
 
-      // Get all timestamps from local synced records
-      const localTimestamps = localSyncedRecords.map(r => r.timestamp);
-
-      // Query Supabase for records matching these timestamps
-      const { data: remoteRecords, error: queryError } = await supabase
-        .from('horarios_registros_diarios')
-        .select('timestamp_local')
-        .in('timestamp_local', localTimestamps);
-
-      if (queryError) {
-        console.error('[SyncService] Supabase query error:', queryError);
-        throw new Error('Error al consultar Supabase');
-      }
-
-      // Create set of timestamps that exist in Supabase
-      const remoteTimestamps = new Set(
-        (remoteRecords || []).map((r: { timestamp_local: number }) => r.timestamp_local)
-      );
-
-      console.log(`[SyncService] Found ${remoteTimestamps.size} matching records in Supabase`);
-
-      // Find orphaned records (local synced but not in Supabase)
-      const orphanedRecords = localSyncedRecords
-        .filter(r => !remoteTimestamps.has(r.timestamp))
-        .map(r => ({
-          id: r.id,
-          timestamp: r.timestamp,
-          date: r.date,
-          time: r.time,
-          type: r.attendanceType,
-        }));
-
-      console.log(`[SyncService] Found ${orphanedRecords.length} orphaned records`);
+      console.log('[SyncService] Verification result:', {
+        processableCount,
+        stuckCount: stuckRecords.length,
+        orphanedCount: orphanedRecords.length,
+      });
 
       let repairedCount = 0;
 
-      // Repair if requested
-      if (repair && orphanedRecords.length > 0) {
-        console.log('[SyncService] Repairing orphaned records...');
-        for (const orphan of orphanedRecords) {
-          try {
-            await attendanceRecordService.markAsPending(orphan.id);
-            repairedCount++;
-          } catch (error) {
-            console.error(`[SyncService] Failed to repair record ${orphan.id}:`, error);
+      // Si se pidio reparar, manejamos los DOS recovery paths:
+      //   a) Orphans → markAsPending (volveran al batch via getPendingSync).
+      //   b) Stuck → recoverStuckRecords (resetea attempts a 0 + status pending).
+      if (repair) {
+        if (orphanedRecords.length > 0) {
+          console.log('[SyncService] Repairing orphaned records...');
+          for (const orphan of orphanedRecords) {
+            try {
+              await attendanceRecordService.markAsPending(orphan.id);
+              repairedCount++;
+            } catch (error) {
+              console.error(`[SyncService] Failed to repair record ${orphan.id}:`, error);
+            }
           }
         }
-        console.log(`[SyncService] Repaired ${repairedCount} records`);
+        if (stuckRecords.length > 0) {
+          const recoveredStuck = await attendanceRecordService.recoverStuckRecords();
+          repairedCount += recoveredStuck;
+        }
+        console.log(`[SyncService] Repaired ${repairedCount} records total`);
       }
 
       return {
         totalLocalSynced: localSyncedRecords.length,
-        totalInSupabase: remoteTimestamps.size,
+        totalInSupabase,
+        processableCount,
+        stuckRecords,
         orphanedRecords,
         repairedCount,
       };
