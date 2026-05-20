@@ -31,6 +31,7 @@ import {
   type RoleConfig,
 } from '@services/configuracion.service';
 import type { AttendanceRecord, AttendanceType } from '@services/storage';
+import { decimalToAmPm, formatFechaCorta } from '@utils/dateUtils';
 import { styles } from './HomeScreen.styles';
 import { COLORS } from '@/constants/theme';
 
@@ -271,11 +272,32 @@ export const HomeScreen: React.FC = () => {
     return { hours: Math.max(0, totalHours), isInProgress };
   }, [todayRecords]);
 
-  const handleClockIn = () => {
+  const handleClockIn = async () => {
     if (!canClockIn || isProcessing) {
       Alert.alert('No disponible', 'Ya has marcado tu entrada');
       return;
     }
+
+    // Pre-check de jornada abierta: muestra mensaje claro en lugar del error
+    // crudo que devolvería el constraint del backend al sincronizar.
+    if (user?.cedula) {
+      setIsProcessing(true);
+      try {
+        const open = await attendanceService.getOpenJourney(user.cedula);
+        if (open) {
+          const tiempoStr = open.horasAbierta < 1 ? 'menos de 1 h' : `${Math.floor(open.horasAbierta)} h`;
+          Alert.alert(
+            'Tenés una jornada abierta',
+            `Tu última entrada quedó sin cerrar (${formatFechaCorta(open.fecha)} a las ${decimalToAmPm(open.horaInicio)}, lleva ${tiempoStr}). Contactá a tu administrador para que cierre esa jornada y puedas marcar una nueva entrada.`,
+            [{ text: 'Entendido' }]
+          );
+          return;
+        }
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+
     setSelectedType('clock_in');
     setShowCamera(true);
   };

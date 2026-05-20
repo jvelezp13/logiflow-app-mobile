@@ -27,6 +27,17 @@ const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/upload-kiosk-photo`;
 let isSyncInProgress = false;
 
 /**
+ * Códigos de error compartidos con el backend para el invariante "jornada abierta".
+ * - OPEN_JOURNEY_EF_CODE: campo `code` del body 409 de la Edge Function kiosko.
+ * - PG_CHECK_VIOLATION + OPEN_JOURNEY_DETAIL: error de Postgres del constraint
+ *   en modo normal (sync directo via supabase-js).
+ */
+const OPEN_JOURNEY_EF_CODE = 'OPEN_JOURNEY';
+const PG_CHECK_VIOLATION = '23514';
+const PG_UNIQUE_VIOLATION = '23505';
+const OPEN_JOURNEY_DETAIL = 'OPEN_JOURNEY_EXISTS';
+
+/**
  * Sync result type
  */
 export type SyncResult = {
@@ -156,23 +167,25 @@ export const syncService = {
   },
 
   /**
-   * Llama al Edge Function de kiosko (upload-kiosk-photo).
-   * Sirve para los dos modos:
-   *   - Primer intento: si record.photoBase64 existe, se manda y la EF sube la foto.
-   *   - Retry post-upload: si solo existe record.photoUrl, se manda esa y la EF
-   *     skipea el upload y solo (re)intenta el INSERT.
-   *
-   * Requiere que el deploy de la Edge Function soporte el campo opcional photoUrl
-   * (versión deployada desde 2026-05-19).
-   *
-   * @param record - Full attendance record
-   * @param pin - 4-digit PIN code
-   * @returns Object with photoUrl and whether record was inserted, or null on error
+   * Llama al Edge Function de kiosko. photoBase64 dispara upload+insert;
+   * solo photoUrl dispara insert-only (retry post-fallo).
    */
   async callKioskEdgeFunction(
     record: AttendanceRecord,
     pin: string
-  ): Promise<{ photoUrl: string; recordInserted: boolean } | null> {
+  ): Promise<
+    | { kind: 'success'; photoUrl: string; recordInserted: boolean }
+    | {
+        kind: 'open_journey';
+        // En el path race-condition de la EF, los campos de contexto pueden venir
+        // null si la consulta de enriquecimiento del constraint falló. El caller
+        // debe mostrar mensaje genérico cuando fecha es null.
+        fecha: string | null;
+        horaInicio: number | null;
+        horasAbierta: number | null;
+      }
+    | null
+  > {
     try {
       const mode = record.photoBase64 ? 'upload+insert' : 'insert-only';
       console.log(`[SyncService] Calling kiosk Edge Function (${mode})`);
@@ -228,6 +241,7 @@ export const syncService = {
             ...photoPayload,
             userId: record.userId,
             recordId: record.id,
+            tenantId, // Scopea el PIN lookup multi-tenant (evita colisiones de PIN entre tenants).
             recordData,
           }),
         },
@@ -236,6 +250,22 @@ export const syncService = {
             console.log(`[SyncService] Retry kiosk EF (${attempt})`),
         }
       );
+
+      // 409 OPEN_JOURNEY: empleado con jornada abierta sin cerrar (constraint backend).
+      if (response.status === 409) {
+        const body = await response.json().catch(() => ({}));
+        if (body?.code === OPEN_JOURNEY_EF_CODE) {
+          console.warn('[SyncService] Kiosk EF rechazado por jornada abierta:', body);
+          return {
+            kind: 'open_journey',
+            fecha: typeof body.fecha === 'string' ? body.fecha : null,
+            horaInicio: typeof body.hora_inicio_decimal === 'number' ? body.hora_inicio_decimal : null,
+            horasAbierta: typeof body.horas_abierta === 'number' ? body.horas_abierta : null,
+          };
+        }
+        console.error('[SyncService] Kiosk EF 409 sin code OPEN_JOURNEY:', body);
+        return null;
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -251,6 +281,7 @@ export const syncService = {
           recordInserted: result.recordInserted,
         });
         return {
+          kind: 'success',
           photoUrl: result.photoUrl,
           recordInserted: result.recordInserted === true,
         };
@@ -266,19 +297,22 @@ export const syncService = {
 
   /**
    * Sync attendance record to Supabase
-   *
-   * @param record - Attendance record
-   * @param photoUrl - Photo URL (after upload)
-   * @returns Success boolean
+   * Discrimina el resultado:
+   *   - 'success'       → INSERT/UPDATE OK
+   *   - 'open_journey'  → constraint backend rechazó por jornada abierta existente
+   *   - 'error'         → cualquier otro fallo
    */
-  async syncRecord(record: AttendanceRecord, photoUrl?: string): Promise<boolean> {
+  async syncRecord(
+    record: AttendanceRecord,
+    photoUrl?: string
+  ): Promise<'success' | 'open_journey' | 'error'> {
     try {
       // Obtener tenant_id: primero del registro local, luego del store
       const tenantId = record.tenantId || getTenantId();
 
       if (!tenantId) {
         console.error('[SyncService] Cannot sync without tenant_id');
-        return false;
+        return 'error';
       }
 
       // Prepare data for horarios_registros_diarios table
@@ -333,7 +367,7 @@ export const syncService = {
 
       if (selectError) {
         console.error('[SyncService] Select error:', selectError);
-        return false;
+        return 'error';
       }
 
       // Step 2: UPDATE if this exact record exists (re-sync), INSERT if new
@@ -355,7 +389,7 @@ export const syncService = {
 
         if (updateError) {
           console.error('[SyncService] Update error:', updateError);
-          return false;
+          return 'error';
         }
 
         console.log('[SyncService] Record updated successfully (re-sync)');
@@ -374,25 +408,32 @@ export const syncService = {
         );
 
         if (insertError) {
-          // Error 23505 = duplicate key, meaning the record already exists in Supabase
-          // This can happen if two sync processes run in parallel
-          // In this case, we consider it a success since the data is already there
-          if (insertError.code === '23505') {
+          // 23514 + OPEN_JOURNEY_EXISTS: constraint backend rechazó por jornada abierta.
+          if (
+            insertError.code === PG_CHECK_VIOLATION &&
+            insertError.details === OPEN_JOURNEY_DETAIL
+          ) {
+            console.warn('[SyncService] INSERT rechazado por jornada abierta:', insertError);
+            return 'open_journey';
+          }
+          // 23505 = duplicate key, el registro ya existe en Supabase (race condition
+          // entre dos sync paralelos). Tratamos como éxito porque los datos ya están.
+          if (insertError.code === PG_UNIQUE_VIOLATION) {
             console.log('[SyncService] Record already exists in Supabase (duplicate), marking as synced');
-            return true;
+            return 'success';
           }
 
           console.error('[SyncService] Insert error:', insertError);
-          return false;
+          return 'error';
         }
 
         console.log('[SyncService] Record inserted successfully');
       }
 
-      return true;
+      return 'success';
     } catch (error) {
       console.error('[SyncService] Sync record error:', error);
-      return false;
+      return 'error';
     }
   },
 
@@ -418,6 +459,17 @@ export const syncService = {
         console.error('[SyncService] markAsSyncError failed:', markErr);
       }
       return { success: false, recordId: record.id, error: errorMsg };
+    };
+
+    // Jornada abierta sin cerrar: huérfano permanente (no retriable hasta que
+    // el admin la cierre desde el panel correspondiente).
+    const failAsOpenJourney = async (detail: string): Promise<SyncResult> => {
+      await attendanceRecordService.markAsOrphan(record.id);
+      return {
+        success: false,
+        recordId: record.id,
+        error: `${OPEN_JOURNEY_EF_CODE}: ${detail}`,
+      };
     };
 
     try {
@@ -477,16 +529,24 @@ export const syncService = {
           return fail('Edge Function (kiosko) falló');
         }
 
-        // Persistir photoUrl si la EF subió foto en esta llamada (primer intento).
-        // En retries la photoUrl ya estaba persistida y la EF devuelve la misma.
+        if (edgeResult.kind === 'open_journey') {
+          // Si la EF devolvió contexto enriquecido lo incluimos; en path race-condition
+          // los campos vienen null y caemos a un mensaje genérico.
+          const detail =
+            edgeResult.fecha && edgeResult.horasAbierta !== null
+              ? `jornada abierta del ${edgeResult.fecha} sin cerrar (${edgeResult.horasAbierta.toFixed(1)}h)`
+              : 'el empleado tiene una jornada abierta sin cerrar';
+          return failAsOpenJourney(detail);
+        }
+
         if (edgeResult.photoUrl && edgeResult.photoUrl !== record.photoUrl) {
           await attendanceRecordService.update(record.id, { photoUrl: edgeResult.photoUrl });
         }
         photoUrl = edgeResult.photoUrl;
 
         if (!edgeResult.recordInserted) {
-          // Foto subida pero INSERT falló del lado de la EF. La photoUrl quedó
-          // persistida, así que el siguiente trigger reintentará en modo insert-only.
+          // Foto subida pero INSERT no se hizo. La photoUrl quedó persistida,
+          // el siguiente trigger reintentará en modo insert-only.
           return fail('Edge Function reportó INSERT no realizado');
         }
       } else {
@@ -506,8 +566,11 @@ export const syncService = {
           await attendanceRecordService.update(record.id, { photoUrl });
         }
 
-        const syncSuccess = await this.syncRecord(record, photoUrl);
-        if (!syncSuccess) {
+        const syncResult = await this.syncRecord(record, photoUrl);
+        if (syncResult === 'open_journey') {
+          return failAsOpenJourney('el empleado tiene una jornada abierta sin cerrar');
+        }
+        if (syncResult === 'error') {
           return fail('Error al sincronizar datos');
         }
       }

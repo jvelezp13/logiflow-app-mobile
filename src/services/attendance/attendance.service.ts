@@ -341,6 +341,60 @@ export const attendanceService = {
   },
 
   /**
+   * Detecta jornadas abiertas en el backend (defense in depth con el constraint).
+   * Fail-open: cualquier error o timeout devuelve null, dejando que el backend
+   * rechace al sincronizar. Solo funciona en modo normal (sesión Supabase activa).
+   */
+  async getOpenJourney(
+    userCedula: string
+  ): Promise<{ fecha: string; horaInicio: number; horasAbierta: number } | null> {
+    type Row = { fecha: string; hora_inicio_decimal: number; horas_abierta: number };
+    const QUERY_TIMEOUT_MS = 3000;
+
+    try {
+      const query = supabase
+        .from('vista_jornadas_abiertas')
+        .select('fecha, hora_inicio_decimal, horas_abierta')
+        .eq('cedula', userCedula)
+        .order('timestamp_local', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<{ data: null; error: { message: string } }>((resolve) => {
+        timeoutHandle = setTimeout(
+          () => resolve({ data: null, error: { message: 'timeout' } }),
+          QUERY_TIMEOUT_MS
+        );
+      });
+
+      try {
+        const { data, error } = (await Promise.race([query, timeout])) as {
+          data: Row | null;
+          error: unknown;
+        };
+
+        if (error) {
+          console.warn('[AttendanceService] getOpenJourney query error:', error);
+          return null;
+        }
+        if (!data) return null;
+
+        return {
+          fecha: data.fecha,
+          horaInicio: data.hora_inicio_decimal,
+          horasAbierta: data.horas_abierta,
+        };
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
+    } catch (error) {
+      console.warn('[AttendanceService] getOpenJourney exception:', error);
+      return null;
+    }
+  },
+
+  /**
    * Check if user can clock out by cédula
    * Considera marcajes de todos los dispositivos
    */

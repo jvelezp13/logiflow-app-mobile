@@ -83,6 +83,21 @@ export const formatTimeAmPm = (time: string | null | undefined): string => {
 };
 
 /**
+ * Convertir hora decimal (e.g. 8.5) a 12h con AM/PM ("8:30 AM").
+ */
+export const decimalToAmPm = (decimal: number): string => {
+  return formatTimeAmPm(decimalToTime(decimal));
+};
+
+/**
+ * Formatea una fecha YYYY-MM-DD o Date a "d 'de' MMMM" en español ("19 de mayo").
+ */
+export const formatFechaCorta = (date: Date | string): string => {
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  return format(dateObj, DATE_FORMATS.dateShort, { locale: es });
+};
+
+/**
  * Format datetime for display (dd/MM/yyyy HH:mm)
  */
 export const formatDatetimeDisplay = (datetime: Date | string): string => {

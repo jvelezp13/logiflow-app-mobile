@@ -70,6 +70,7 @@ export const STORAGE_KEYS = {
 export const DATE_FORMATS = {
   date: 'yyyy-MM-dd', // Database format
   dateDisplay: 'dd/MM/yyyy', // User display
+  dateShort: "d 'de' MMMM", // "19 de mayo" — para alerts con locale es
   time: 'HH:mm:ss', // Database format
   timeDisplay: 'HH:mm', // User display
   datetime: 'yyyy-MM-dd HH:mm:ss',
