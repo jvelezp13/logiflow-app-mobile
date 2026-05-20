@@ -14,23 +14,12 @@ import NovedadStatusBadge from '../../components/novedades/NovedadStatusBadge';
 import { TIPOS_NOVEDAD_LABELS } from '../../services/novedadesService';
 import useNovedades from '../../hooks/useNovedades';
 import type { Novedad } from '../../services/novedadesService';
+import { formatTimeAmPm } from '@utils/dateUtils';
 
 type RouteParams = {
   DetalleNovedad: {
     novedadId: string;
   };
-};
-
-/**
- * Convert 24h time string (HH:mm or HH:mm:ss) to 12h format with AM/PM
- */
-const formatTimeAmPm = (time: string | null | undefined): string => {
-  if (!time) return '--:--';
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours, 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 };
 
 const DetalleNovedadScreen: React.FC = () => {
@@ -112,7 +101,7 @@ const DetalleNovedadScreen: React.FC = () => {
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Reportada:</Text>
           <Text style={styles.infoValue}>
-            {format(parseISO(novedad.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+            {format(parseISO(novedad.created_at), "d MMM yyyy, h:mm a", { locale: es })}
           </Text>
         </View>
       </View>
@@ -167,7 +156,7 @@ const DetalleNovedadScreen: React.FC = () => {
 
           {novedad.fecha_revision && (
             <Text style={styles.fechaRevision}>
-              Revisada el {format(parseISO(novedad.fecha_revision), "d MMM yyyy 'a las' HH:mm", { locale: es })}
+              Revisada el {format(parseISO(novedad.fecha_revision), "d MMM yyyy 'a las' h:mm a", { locale: es })}
             </Text>
           )}
 

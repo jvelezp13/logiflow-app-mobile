@@ -12,6 +12,7 @@ import type { AttendanceRecord } from '@services/storage';
 import { decode } from 'base64-arraybuffer';
 import { getTenantId } from '@store/authStore';
 import { fetchWithRetry, withRetry } from '@utils/network.utils';
+import { syncEvents, SYNC_EVENTS } from './syncEvents';
 
 /**
  * Edge Function URL for kiosk photo uploads
@@ -62,7 +63,7 @@ export type SyncVerificationResult = {
     syncAttempts: number;
     syncError?: string;
   }>;
-  // Locales 'synced' que NO existen en Supabase (sync_status mintio en versiones viejas).
+  // Locales 'synced' que NO existen en Supabase.
   orphanedRecords: Array<{
     id: string;
     timestamp: number;
@@ -399,23 +400,17 @@ export const syncService = {
    * Procesa un registro: sube foto (si aún no la tiene) + INSERT en BD.
    *
    * Contrato de estado al terminar:
-   *   - Éxito → markAsSynced (status='synced', photoUploaded=true, syncedAt, base64 limpio).
-   *   - Sin red → markAsPending (revierte 'syncing' a 'pending', NO incrementa attempts).
-   *   - Sin credenciales (sin sesión ni PIN) → markAsOrphan (attempts=999).
-   *   - Cualquier otro fallo → markAsSyncError (status='error', attempts++).
+   *   - Éxito        → markAsSynced (status='synced', photoUploaded=true, base64 limpio).
+   *   - Sin red      → markAsPending (sin incrementar attempts).
+   *   - Sin creds    → markAsOrphan (attempts=999).
+   *   - Otro fallo   → markAsSyncError (status='error', attempts++).
    *
-   * Garantías:
-   *   - El registro NUNCA queda en 'syncing' al finalizar (esa era la causa del loop
-   *     infinito en versiones <=2.1.1).
-   *   - photoUrl se persiste apenas la foto sube — el retry no re-sube (evita
-   *     archivos duplicados en Storage).
-   *   - photoUploaded=true + clearPhotoBase64 solo ocurre tras INSERT exitoso —
-   *     esto permite recuperar el registro si solo falla el INSERT.
+   * Invariantes: el registro nunca queda en 'syncing' al salir, y photoUrl/base64
+   * se persisten en un orden que mantiene el registro recuperable si el INSERT falla.
    */
   async processRecord(record: AttendanceRecord): Promise<SyncResult> {
-    // Marca error + incrementa attempts. Usado en todos los paths de fallo
-    // legítimo dentro del try (los errores transientes que NO penalizan attempts,
-    // como falta de red, se manejan aparte).
+    // Fail común para los paths de error dentro del try: garantiza markAsSyncError
+    // y que sync_attempts se incremente (falta de red se maneja aparte).
     const fail = async (errorMsg: string): Promise<SyncResult> => {
       try {
         await attendanceRecordService.markAsSyncError(record.id, errorMsg);
@@ -608,6 +603,14 @@ export const syncService = {
         `[SyncService] Batch sync complete: ${synced} synced, ${failed} failed`
       );
 
+      // Notificar solo cuando hubo trabajo real: evita pulls innecesarios en los
+      // listeners (HomeScreen llama pullFromSupabase en cada refresh).
+      syncEvents.emit(SYNC_EVENTS.SYNC_COMPLETED, {
+        synced,
+        failed,
+        total: pendingRecords.length,
+      });
+
       return {
         total: pendingRecords.length,
         synced,
@@ -623,7 +626,6 @@ export const syncService = {
         results: [],
       };
     } finally {
-      // Always release the lock
       isSyncInProgress = false;
     }
   },
@@ -687,11 +689,13 @@ export const syncService = {
         throw new Error('Sin conexión a Internet');
       }
 
-      // Dimension 1: pendientes que el batch automatico aun procesa (informativo).
-      const processableCount = await attendanceRecordService.getPendingSyncCount();
+      // Las 3 lecturas son independientes — paralelas.
+      const [processableCount, stuck, localSyncedRecords] = await Promise.all([
+        attendanceRecordService.getPendingSyncCount(),
+        attendanceRecordService.getStuckRecords(),
+        attendanceRecordService.getSyncedRecords(),
+      ]);
 
-      // Dimension 2: huerfanos (attempts>=10) que el batch ya descarto.
-      const stuck = await attendanceRecordService.getStuckRecords();
       const stuckRecords = stuck.map((r) => ({
         id: r.id,
         timestamp: r.timestamp,
@@ -702,8 +706,6 @@ export const syncService = {
         syncError: r.syncError,
       }));
 
-      // Dimension 3: locales 'synced' que NO existen en Supabase (orphans).
-      const localSyncedRecords = await attendanceRecordService.getSyncedRecords();
       console.log(`[SyncService] Found ${localSyncedRecords.length} local records marked as synced`);
 
       let totalInSupabase = 0;

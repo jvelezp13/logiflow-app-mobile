@@ -76,4 +76,7 @@ export const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
     textAlign: 'center',
   },
+  versionText: {
+    marginTop: SPACING.lg,
+  },
 });

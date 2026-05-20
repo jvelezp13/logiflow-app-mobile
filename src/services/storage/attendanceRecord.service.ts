@@ -520,9 +520,9 @@ export const attendanceRecordService = {
       console.log(`[AttendanceRecordService] Recovering ${stuck.length} stuck records`);
 
       await database.write(async () => {
-        await Promise.all(
-          stuck.map((record) =>
-            record.update((rec) => {
+        await database.batch(
+          ...stuck.map((record) =>
+            record.prepareUpdate((rec) => {
               rec.attendanceSyncStatus = 'pending';
               rec.syncAttempts = 0;
               rec.syncError = undefined;

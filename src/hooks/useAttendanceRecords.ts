@@ -190,6 +190,7 @@ export const useAttendanceRecords = (
     isRefreshing,
     pullResult,
     novedadesInfo,
+    refreshNovedades,
     onRefresh,
   };
 };

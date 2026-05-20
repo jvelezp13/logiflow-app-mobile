@@ -1,11 +1,5 @@
 /**
- * Main Navigator
- *
- * Bottom tab navigator for main app screens.
- * Handles safe area insets for devices with notches.
- *
- * Note: Novedades navigator is hidden from tab bar but accessible
- * programmatically from History screen for viewing adjustment details.
+ * Bottom tab navigator: Home / History / Settings (+ Cierres oculto).
  */
 
 import React from 'react';
@@ -14,7 +8,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '@/types/navigation.types';
 import { HomeScreen, HistoryScreen, SettingsScreen } from '@screens/main';
-import { NovedadesNavigator } from './NovedadesNavigator';
 import { CierresNavigator } from './CierresNavigator';
 import { COLORS, LAYOUT } from '@constants/theme';
 
@@ -79,20 +72,6 @@ export const MainNavigator: React.FC = () => {
           tabBarIcon: ({ color, size }) => (
             <Text style={{ fontSize: size, color }}>⚙️</Text>
           ),
-        }}
-      />
-      {/* Hidden navigator - accessible from History for adjustment details.
-          popToTopOnBlur evita que screens internas (SolicitarAjuste / DetalleNovedad)
-          queden residuales entre visitas desde Historial — cada entrada arranca
-          fresca y el back vuelve siempre al Historial. */}
-      <Tab.Screen
-        name="Novedades"
-        component={NovedadesNavigator}
-        options={{
-          headerShown: false,
-          tabBarButton: () => null,
-          tabBarItemStyle: { display: 'none' },
-          popToTopOnBlur: true,
         }}
       />
       {/* Hidden navigator - accessible from History for closure details */}

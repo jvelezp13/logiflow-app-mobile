@@ -21,6 +21,7 @@ import { useLocation } from '@hooks/useLocation';
 import { checkNetworkStatus } from '@hooks/useNetworkStatus';
 import { attendanceService } from '@services/attendance';
 import { syncService } from '@services/sync/sync.service';
+import { syncEvents, SYNC_EVENTS, type SyncCompletedPayload } from '@services/sync';
 import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
@@ -138,6 +139,20 @@ export const HomeScreen: React.FC = () => {
       loadRoleConfig();
     }
   }, [user?.id, user?.cedula]); // Re-run when user becomes available
+
+  // Refresca el Home al terminar un batch de sync (badge + records del día),
+  // pero solo si efectivamente cambio algo — evita pulls inutiles al servidor.
+  useEffect(() => {
+    const handleSyncCompleted = (payload?: SyncCompletedPayload) => {
+      if (!user?.id || !user?.cedula) return;
+      if (payload && payload.synced === 0 && payload.failed === 0) return;
+      loadData();
+    };
+    syncEvents.on(SYNC_EVENTS.SYNC_COMPLETED, handleSyncCompleted);
+    return () => {
+      syncEvents.off(SYNC_EVENTS.SYNC_COMPLETED, handleSyncCompleted);
+    };
+  }, [user?.id, user?.cedula]);
 
   // roleConfig se usa para descontar minutosDescanso del total de horas del dia.
   const loadRoleConfig = async () => {

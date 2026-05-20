@@ -15,9 +15,20 @@ import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator } from './MainNavigator';
 import { KioskNavigator } from './KioskNavigator';
 import { PermissionsRequest } from '@components/PermissionsRequest';
+import SolicitarAjusteScreen from '@screens/novedades/SolicitarAjusteScreen';
+import DetalleNovedadScreen from '@screens/novedades/DetalleNovedadScreen';
 import { COLORS } from '@constants/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Opciones compartidas para las screens modales sobre Main (Solicitar/Detalle).
+const floatingScreenOptions = {
+  headerShown: true,
+  headerStyle: { backgroundColor: COLORS.primary },
+  headerTintColor: COLORS.textInverse,
+  headerTitleStyle: { fontWeight: '600' as const },
+  animation: 'slide_from_right' as const,
+};
 
 export const RootNavigator: React.FC = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -71,8 +82,19 @@ export const RootNavigator: React.FC = () => {
         // Kiosk mode - PIN-based authentication
         <Stack.Screen name="Kiosk" component={KioskNavigator} />
       ) : isAuthenticated ? (
-        // Normal mode - authenticated user
-        <Stack.Screen name="Main" component={MainNavigator} />
+        <>
+          <Stack.Screen name="Main" component={MainNavigator} />
+          <Stack.Screen
+            name="SolicitarAjuste"
+            component={SolicitarAjusteScreen}
+            options={{ ...floatingScreenOptions, title: 'Solicitar Ajuste' }}
+          />
+          <Stack.Screen
+            name="DetalleNovedad"
+            component={DetalleNovedadScreen}
+            options={{ ...floatingScreenOptions, title: 'Detalle de Novedad' }}
+          />
+        </>
       ) : (
         // Normal mode - not authenticated
         <Stack.Screen name="Auth" component={AuthNavigator} />

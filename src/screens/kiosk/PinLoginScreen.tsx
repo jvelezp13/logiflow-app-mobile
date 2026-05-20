@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/authStore';
+import { AppVersionText } from '@components/ui/AppVersionText';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 
 export const PinLoginScreen: React.FC = () => {
@@ -107,17 +108,15 @@ export const PinLoginScreen: React.FC = () => {
     }
   };
 
-  /**
-   * Handle admin mode
-   */
-  const handleAdminMode = () => {
+  // Salir del kiosco — pensado para el admin que configura el dispositivo.
+  const handleExitKiosko = () => {
     Alert.alert(
-      'Modo Administrador',
-      '¿Deseas salir del modo kiosco y usar autenticación normal?',
+      'Salir del Modo Kiosco',
+      '¿Deseas volver al login normal con email y contraseña?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Continuar',
+          text: 'Salir',
           onPress: async () => {
             await disableKioskMode();
           },
@@ -212,9 +211,9 @@ export const PinLoginScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Admin Mode Button */}
-      <TouchableOpacity style={styles.adminButton} onPress={handleAdminMode}>
-        <Text style={styles.adminButtonText}>Modo Administrador</Text>
+      {/* Salida del modo kiosco — vuelve al login normal */}
+      <TouchableOpacity style={styles.adminButton} onPress={handleExitKiosko}>
+        <Text style={styles.adminButtonText}>Salir del Modo Kiosco</Text>
       </TouchableOpacity>
 
       {/* Footer */}
@@ -222,6 +221,7 @@ export const PinLoginScreen: React.FC = () => {
         <Text style={styles.footerText}>
           ¿No tienes PIN? Contacta al administrador
         </Text>
+        <AppVersionText style={styles.versionText} />
       </View>
     </SafeAreaView>
   );
@@ -343,5 +343,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
     textAlign: 'center',
+  },
+  versionText: {
+    marginTop: SPACING.sm,
+    opacity: 0.6,
   },
 });

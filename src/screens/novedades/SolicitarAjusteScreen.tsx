@@ -22,10 +22,11 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZES, FONT_WEIGHTS, SPACING, BORDER_RADIUS } from '@constants/theme';
 import { Button } from '@components/ui/Button';
-import type { NovedadesStackParamList } from '@/types/navigation.types';
+import { formatTimeAmPm } from '@utils/dateUtils';
+import type { RootStackParamList } from '@/types/navigation.types';
 import novedadesService from '@services/novedadesService';
 
-type SolicitarAjusteRouteProp = RouteProp<NovedadesStackParamList, 'SolicitarAjuste'>;
+type SolicitarAjusteRouteProp = RouteProp<RootStackParamList, 'SolicitarAjuste'>;
 
 export const SolicitarAjusteScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -162,7 +163,7 @@ export const SolicitarAjusteScreen: React.FC = () => {
               />
               <View style={styles.infoText}>
                 <Text style={styles.infoLabel}>Hora registrada</Text>
-                <Text style={styles.infoValue}>{horaActual}</Text>
+                <Text style={styles.infoValue}>{formatTimeAmPm(horaActual)}</Text>
               </View>
             </View>
           </View>

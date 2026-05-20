@@ -15,12 +15,14 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '@hooks/useAuth';
 import { useAttendanceRecords, type DateFilter } from '@hooks/useAttendanceRecords';
 import { AttendanceCard } from '@components/AttendanceCard';
 import type { AttendanceRecord } from '@services/storage';
 import type { NovedadInfo } from '@services/novedadesService';
+import type { RootStackParamList } from '@/types/navigation.types';
 import { styles } from './HistoryScreen.styles';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -31,17 +33,22 @@ type Section = {
 };
 
 export const HistoryScreen: React.FC = () => {
-  // Use any for navigation to handle nested navigator params
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, userCedula } = useAuth();
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
 
   // Pass userCedula to enable pulling records from Supabase
-  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, onRefresh } = useAttendanceRecords(
+  const { records, isLoading, isPulling, isRefreshing, novedadesInfo, refreshNovedades, onRefresh } = useAttendanceRecords(
     user?.id,
     dateFilter,
     userCedula
+  );
+
+  // Refresca el indicador de novedades al volver de SolicitarAjuste/DetalleNovedad.
+  useFocusEffect(
+    useCallback(() => {
+      refreshNovedades();
+    }, [refreshNovedades])
   );
 
   /**
@@ -51,38 +58,14 @@ export const HistoryScreen: React.FC = () => {
     return novedadesInfo.get(record.timestamp);
   }, [novedadesInfo]);
 
-  // Flujo por estado de novedad del marcaje:
-  //   sin novedad        → SolicitarAjuste directo
-  //   pendiente          → DetalleNovedad (no se puede crear otra, lo bloquea la
-  //                        UNIQUE constraint en DB y se traduce al usuario)
-  //   aprobada/rechazada → Alert con opciones (ver detalle vs nuevo ajuste)
-  //
-  // Cada navigate hace reset del stack interno de Novedades para que el back
-  // siempre vuelva al Historial. popToTopOnBlur en el tab no era suficiente:
-  // si el user entraba a SolicitarAjuste y despues volvia a Historial sin que
-  // el blur disparara (caso con tab oculto), la stack quedaba residual y el
-  // siguiente navigate apilaba encima.
-  const navegarLimpio = (screen: string, params: Record<string, unknown>) => {
-    navigation.dispatch(
-      CommonActions.navigate({
-        name: 'Novedades',
-        params: {
-          screen,
-          params,
-          // initial: false fuerza que el navigate empiece una pila nueva con
-          // la screen indicada como root.
-          initial: false,
-        },
-      }),
-    );
-  };
-
+  // Flujo por estado: sin novedad → solicitar; pendiente → detalle;
+  // aprobada → bloqueado (1 ajuste aprobado activo por marcaje); rechazada → alert con opciones.
   const handleRecordPress = useCallback((record: AttendanceRecord) => {
     const novedadInfo = getNovedadInfo(record);
     const horaActual = record.time.slice(0, 5);
 
     const irASolicitar = () => {
-      navegarLimpio('SolicitarAjuste', {
+      navigation.navigate('SolicitarAjuste', {
         marcajeId: record.timestamp,
         fecha: record.date,
         tipo: record.attendanceType,
@@ -91,7 +74,7 @@ export const HistoryScreen: React.FC = () => {
     };
 
     const irADetalle = (novedadId: string) => {
-      navegarLimpio('DetalleNovedad', { novedadId });
+      navigation.navigate('DetalleNovedad', { novedadId });
     };
 
     if (!novedadInfo) {
@@ -104,11 +87,21 @@ export const HistoryScreen: React.FC = () => {
       return;
     }
 
+    if (novedadInfo.estado === 'aprobada') {
+      Alert.alert(
+        'Marcaje ya ajustado',
+        'Este marcaje ya tiene un ajuste aprobado. Si necesitás corregirlo de nuevo, contactá al administrador para que primero revierta el ajuste anterior.',
+        [
+          { text: 'Ver detalle', onPress: () => irADetalle(novedadInfo.id) },
+          { text: 'Cerrar', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     Alert.alert(
-      'Marcaje con ajuste',
-      novedadInfo.estado === 'aprobada'
-        ? 'Este marcaje ya tiene un ajuste aprobado. ¿Qué querés hacer?'
-        : 'Tu solicitud anterior para este marcaje fue rechazada. ¿Qué querés hacer?',
+      'Solicitud rechazada',
+      'Tu solicitud anterior para este marcaje fue rechazada. ¿Qué querés hacer?',
       [
         { text: 'Ver detalle', onPress: () => irADetalle(novedadInfo.id) },
         { text: 'Solicitar nuevo ajuste', onPress: irASolicitar },

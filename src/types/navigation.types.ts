@@ -10,13 +10,21 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { StackScreenProps } from '@react-navigation/stack';
 
 /**
- * Root Stack (Auth + Main + Kiosk)
+ * Root Stack. SolicitarAjuste y DetalleNovedad viven aquí (sobre Main) para
+ * que el back vuelva al tab activo del Main, típicamente History.
  */
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
   Kiosk: undefined;
   Splash: undefined;
+  SolicitarAjuste: {
+    marcajeId: number;
+    fecha: string;
+    tipo: 'clock_in' | 'clock_out';
+    horaActual: string;
+  };
+  DetalleNovedad: { novedadId: string };
 };
 
 /**
@@ -40,24 +48,8 @@ export type KioskStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   History: undefined;
-  Novedades: undefined;
   Cierres: undefined;
   Settings: undefined;
-};
-
-/**
- * Novedades Stack
- */
-export type NovedadesStackParamList = {
-  NovedadesList: undefined;
-  CrearNovedad: undefined;
-  DetalleNovedad: { novedadId: string };
-  SolicitarAjuste: {
-    marcajeId: number;
-    fecha: string;
-    tipo: 'clock_in' | 'clock_out';
-    horaActual: string;
-  };
 };
 
 /**
@@ -89,12 +81,6 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
   CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, T>,
     RootStackScreenProps<keyof RootStackParamList>
-  >;
-
-export type NovedadesStackScreenProps<T extends keyof NovedadesStackParamList> =
-  CompositeScreenProps<
-    StackScreenProps<NovedadesStackParamList, T>,
-    MainTabScreenProps<keyof MainTabParamList>
   >;
 
 export type CierresStackScreenProps<T extends keyof CierresStackParamList> =

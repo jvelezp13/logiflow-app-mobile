@@ -70,6 +70,19 @@ export const formatTimeDisplay = (time: Date | string): string => {
 };
 
 /**
+ * Convertir hora 24h ("HH:mm" o "HH:mm:ss") a 12h con AM/PM ("h:mm AM").
+ */
+export const formatTimeAmPm = (time: string | null | undefined): string => {
+  if (!time || !time.includes(':')) return '--:--';
+  const [hoursStr, minutesStr] = time.split(':');
+  const hour = parseInt(hoursStr, 10);
+  if (Number.isNaN(hour)) return '--:--';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutesStr ?? '00'} ${ampm}`;
+};
+
+/**
  * Format datetime for display (dd/MM/yyyy HH:mm)
  */
 export const formatDatetimeDisplay = (datetime: Date | string): string => {

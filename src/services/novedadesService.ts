@@ -69,6 +69,26 @@ export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
   exceso_tope_diario: 'Exceso de tope diario',
 };
 
+/**
+ * Carga cédula y nombre completo (nombre + apellido) del perfil. Único lookup
+ * para evitar duplicar la construcción del string en cada caller.
+ */
+const loadEmpleadoProfile = async (
+  userId: string
+): Promise<{ cedula: string; empleado: string } | null> => {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('cedula, nombre, apellido')
+    .eq('user_id', userId)
+    .single() as { data: { cedula: string; nombre: string; apellido: string | null } | null };
+
+  if (!profile) return null;
+  return {
+    cedula: profile.cedula,
+    empleado: `${profile.nombre}${profile.apellido ? ' ' + profile.apellido : ''}`,
+  };
+};
+
 // =====================================================
 // SERVICIO DE NOVEDADES
 // =====================================================
@@ -114,65 +134,83 @@ class NovedadesService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      // Obtener datos del perfil
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('cedula, nombre')
-        .eq('user_id', user.id)
-        .single() as { data: { cedula: string; nombre: string } | null; error: unknown };
-
-      if (profileError || !profile) {
+      const profileResult = await loadEmpleadoProfile(user.id);
+      if (!profileResult) {
         return { success: false, error: 'No se pudo obtener información del perfil' };
       }
-
-      // Validar que la semana no tenga cierre confirmado o vencido
-      const fechaMarcaje = parseISO(data.fecha);
-      const inicioSemana = startOfWeek(fechaMarcaje, { weekStartsOn: 1 }); // Lunes
-      const semanaInicioStr = format(inicioSemana, 'yyyy-MM-dd');
-
-      const { data: cierreExistente } = await supabase
-        .from('cierres_semanales')
-        .select('estado')
-        .eq('cedula', profile.cedula)
-        .eq('semana_inicio', semanaInicioStr)
-        .in('estado', ['confirmado', 'vencido'])
-        .maybeSingle() as { data: { estado: string } | null; error: unknown };
-
-      if (cierreExistente) {
-        const estadoTexto = cierreExistente.estado === 'confirmado' ? 'confirmado' : 'vencido';
-        return {
-          success: false,
-          error: `No puedes solicitar ajustes para esta semana porque el cierre ya está ${estadoTexto}.`
-        };
-      }
+      const { cedula, empleado: empleadoNombre } = profileResult;
 
       // Obtener tenant_id (requerido por RLS)
       const tenantId = obtenerTenantIdRequerido();
 
-      // Determinar marcaje_id
+      // Determinar marcaje_id (lookup solo si no viene en data)
       let marcajeId = data.marcaje_id;
-
-      // Si no hay marcaje_id pero hay timestamp, buscar en Supabase
       if (!marcajeId && data.timestamp_local) {
-        const { data: marcaje, error: marcajeError } = await supabase
+        const { data: marcaje } = await supabase
           .from('horarios_registros_diarios')
           .select('id')
-          .eq('cedula', profile.cedula)
+          .eq('cedula', cedula)
           .eq('timestamp_local', data.timestamp_local)
           .single() as { data: { id: number } | null; error: unknown };
 
-        if (marcajeError || !marcaje) {
+        if (!marcaje) {
           console.warn('No se encontró el marcaje por timestamp, continuando sin marcaje_id');
         } else {
           marcajeId = marcaje.id;
         }
       }
 
+      // Validaciones independientes en paralelo:
+      // - cierre semanal confirmado/vencido bloquea el ajuste
+      // - ajuste aprobado existente bloquea (defensa en profundidad — HistoryScreen ya lo previene)
+      const fechaMarcaje = parseISO(data.fecha);
+      const semanaInicioStr = format(startOfWeek(fechaMarcaje, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+      const cierreQuery = supabase
+        .from('cierres_semanales')
+        .select('estado')
+        .eq('cedula', cedula)
+        .eq('semana_inicio', semanaInicioStr)
+        .in('estado', ['confirmado', 'vencido'])
+        .maybeSingle();
+
+      const ajusteAprobadoQuery = marcajeId
+        ? supabase
+            .from('horarios_novedades')
+            .select('id')
+            .eq('marcaje_id', marcajeId)
+            .eq('tipo_novedad', 'ajuste_marcaje')
+            .eq('estado', 'aprobada')
+            .is('deleted_at', null)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+
+      const [cierreResult, ajusteAprobadoResult] = await Promise.all([
+        cierreQuery,
+        ajusteAprobadoQuery,
+      ]);
+
+      if (cierreResult.data) {
+        const cierreEstado = (cierreResult.data as { estado: string }).estado;
+        const estadoTexto = cierreEstado === 'confirmado' ? 'confirmado' : 'vencido';
+        return {
+          success: false,
+          error: `No puedes solicitar ajustes para esta semana porque el cierre ya está ${estadoTexto}.`,
+        };
+      }
+
+      if (ajusteAprobadoResult.data) {
+        return {
+          success: false,
+          error: 'Este marcaje ya tiene un ajuste aprobado. Para corregirlo de nuevo, contactá al administrador para que primero revierta el ajuste anterior.',
+        };
+      }
+
       // Preparar datos para insertar
       const novedadData = {
         user_id: user.id,
-        cedula: profile.cedula,
-        empleado: profile.nombre,
+        cedula,
+        empleado: empleadoNombre,
         fecha: data.fecha,
         tipo_novedad: 'ajuste_marcaje' as TipoNovedad,
         motivo: data.motivo,
@@ -223,14 +261,8 @@ class NovedadesService {
         throw new Error('Usuario no autenticado');
       }
 
-      // Obtener datos del perfil
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('cedula, nombre')
-        .eq('user_id', user.id)
-        .single() as { data: { cedula: string; nombre: string } | null; error: unknown };
-
-      if (profileError || !profile) {
+      const profileResult = await loadEmpleadoProfile(user.id);
+      if (!profileResult) {
         throw new Error('No se pudo obtener información del perfil');
       }
 
@@ -240,8 +272,8 @@ class NovedadesService {
       // Preparar datos completos
       const novedadCompleta: NovedadData & { tenant_id: string } = {
         user_id: user.id,
-        cedula: profile.cedula,
-        empleado: profile.nombre,
+        cedula: profileResult.cedula,
+        empleado: profileResult.empleado,
         ...data,
         tenant_id: tenantId,
       };

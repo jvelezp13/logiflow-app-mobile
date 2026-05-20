@@ -15,4 +15,5 @@ export {
   SYNC_EVENTS,
   triggerSync,
   notifyRecordCreated,
+  type SyncCompletedPayload,
 } from './syncEvents';

@@ -51,7 +51,19 @@ export const syncEvents = new SimpleEventEmitter();
 export const SYNC_EVENTS = {
   RECORD_CREATED: 'record_created',
   SYNC_REQUESTED: 'sync_requested',
+  // Emitido cuando syncPendingRecords proceso al menos un registro (synced+failed > 0).
+  // Listeners (HomeScreen) lo usan para refrescar el badge sin esperar pull-to-refresh.
+  SYNC_COMPLETED: 'sync_completed',
 } as const;
+
+/**
+ * Payload de SYNC_COMPLETED.
+ */
+export type SyncCompletedPayload = {
+  synced: number;
+  failed: number;
+  total: number;
+};
 
 /**
  * Trigger sync manually

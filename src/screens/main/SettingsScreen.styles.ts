@@ -60,26 +60,6 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  kioskRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  kioskInfo: {
-    flex: 1,
-  },
-  kioskTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  kioskDescription: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-  },
   versionContainer: {
     alignItems: 'center',
     paddingVertical: SPACING.lg,

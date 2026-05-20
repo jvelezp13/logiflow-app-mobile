@@ -21,6 +21,7 @@ import { useAuth } from '@hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { Input } from '@components/ui/Input';
 import { Button } from '@components/ui/Button';
+import { AppVersionText } from '@components/ui/AppVersionText';
 import { styles } from './LoginScreen.styles';
 
 type Props = AuthStackScreenProps<'Login'>;
@@ -225,6 +226,8 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                 🔢 Modo Kiosco (Marcaje con PIN)
               </Text>
             </TouchableOpacity>
+
+            <AppVersionText style={styles.versionText} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

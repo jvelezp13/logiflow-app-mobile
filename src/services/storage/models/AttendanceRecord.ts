@@ -6,6 +6,7 @@
 
 import { Model } from '@nozbe/watermelondb';
 import { field, readonly, date } from '@nozbe/watermelondb/decorators';
+import { formatTimeAmPm } from '@utils/dateUtils';
 
 /**
  * Attendance type enum
@@ -103,15 +104,10 @@ export class AttendanceRecord extends Model {
   }
 
   /**
-   * Get formatted time string (12-hour format with AM/PM)
+   * Hora del marcaje en formato 12h con AM/PM.
    */
   get formattedTime(): string {
-    // Convert HH:mm:ss to 12-hour format with AM/PM
-    const [hours, minutes] = this.time.split(':');
-    const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const hour12 = hour % 12 || 12; // Convert 0 to 12
-    return `${hour12}:${minutes} ${ampm}`;
+    return formatTimeAmPm(this.time);
   }
 
   /**
