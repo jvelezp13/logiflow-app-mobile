@@ -46,11 +46,16 @@ export const SolicitarAjusteScreen: React.FC = () => {
   const tipoLabel = tipo === 'clock_in' ? 'Entrada' : 'Salida';
 
   const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('es-CO', {
+    // Mostramos ambos formatos para que el empleado vea la conversión
+    // 12h → 24h y detecte errores cuando el picker estaba en a.m./p.m.
+    const display12h = date.toLocaleTimeString('es-CO', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
     });
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${display12h} (${h}:${m})`;
   };
 
   const handleTimeChange = (_event: unknown, selectedDate?: Date) => {
@@ -68,7 +73,7 @@ export const SolicitarAjusteScreen: React.FC = () => {
       DateTimePickerAndroid.open({
         value: horaNueva,
         mode: 'time',
-        is24Hour: false,
+        is24Hour: true,
         onChange: (_event, selectedDate) => {
           if (selectedDate) {
             setHoraNueva(selectedDate);
@@ -194,7 +199,7 @@ export const SolicitarAjusteScreen: React.FC = () => {
               <DateTimePicker
                 value={horaNueva}
                 mode="time"
-                is24Hour={false}
+                is24Hour={true}
                 display="spinner"
                 onChange={handleTimeChange}
               />

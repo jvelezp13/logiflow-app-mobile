@@ -19,26 +19,30 @@ export const compressImage = async (
   quality: number = SYNC_CONFIG.photoQuality
 ): Promise<{ uri: string; base64: string | null }> => {
   try {
-    // Compress and resize image
-    const result = await ImageManipulator.manipulateAsync(
+    // Two-pass strategy to reduce peak memory on low-RAM devices:
+    // Pass 1 resizes + compresses without producing base64 so the native
+    // bitmap can be GC'd before pass 2 reads the small JPEG into a string.
+    const resized = await ImageManipulator.manipulateAsync(
       uri,
       [
         {
           resize: {
-            width: 800, // Resize to max 800px width
+            width: 640,
           },
         },
       ],
       {
         compress: quality,
         format: ImageManipulator.SaveFormat.JPEG,
-        base64: true,
+        base64: false,
       }
     );
 
+    const base64 = await imageToBase64(resized.uri);
+
     return {
-      uri: result.uri,
-      base64: result.base64 || null,
+      uri: resized.uri,
+      base64,
     };
   } catch (error) {
     console.error('[ImageUtils] Compression error:', error);

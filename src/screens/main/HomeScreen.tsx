@@ -20,6 +20,7 @@ import { useAuth } from '@hooks/useAuth';
 import { useLocation } from '@hooks/useLocation';
 import { checkNetworkStatus } from '@hooks/useNetworkStatus';
 import { attendanceService } from '@services/attendance';
+import { attendanceRecordService } from '@services/storage';
 import { syncService } from '@services/sync/sync.service';
 import { syncEvents, SYNC_EVENTS, type SyncCompletedPayload } from '@services/sync';
 import { CameraCapture } from '@components/Camera/CameraCapture';
@@ -121,6 +122,10 @@ export const HomeScreen: React.FC = () => {
   const [selectedType, setSelectedType] = useState<AttendanceType | null>(null);
   const [canClockIn, setCanClockIn] = useState(true);
   const [canClockOut, setCanClockOut] = useState(false);
+  // Distingue bloqueo por pending local (sync sin terminar) del bloqueo
+  // por estado normal de la jornada — habilita el mensaje correcto al user.
+  const [hasBlockingPendingIn, setHasBlockingPendingIn] = useState(false);
+  const [hasBlockingPendingOut, setHasBlockingPendingOut] = useState(false);
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -194,12 +199,26 @@ export const HomeScreen: React.FC = () => {
         }
       }
 
+      // 1.5. Force sync attempt antes del check: si el ack del último
+      // marcaje se perdió, esto puede limpiar el pending local antes y
+      // evita que el botón quede bloqueado por un pending atascado.
+      if (await syncService.needsSync()) {
+        try {
+          await syncService.syncPendingRecords();
+        } catch (syncErr) {
+          console.warn('[HomeScreen] Force sync attempt failed (continuamos):', syncErr);
+        }
+      }
+
       // 2. Consultar por CÉDULA (no userId) para detectar marcajes de cualquier dispositivo
-      const [canIn, canOut, records, syncCount] = await Promise.all([
+      // + chequeo de pending local con timeout (evita bloqueo perpetuo)
+      const [canIn, canOut, records, syncCount, pendingIn, pendingOut] = await Promise.all([
         attendanceService.canClockInByCedula(user.cedula),
         attendanceService.canClockOutByCedula(user.cedula),
         attendanceService.getTodayRecordsByCedula(user.cedula),
         attendanceService.getPendingSyncCount(),
+        attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_in'),
+        attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_out'),
       ]);
 
       console.log('[HomeScreen] Data loaded:', {
@@ -216,8 +235,13 @@ export const HomeScreen: React.FC = () => {
         syncCount,
       });
 
+      // canClockIn/Out reflejan solo el estado de la jornada (cloud/local);
+      // el bloqueo por pending se aplica en el handler para que el botón
+      // siga visible y se pueda mostrar el Alert "Sincronizando".
       setCanClockIn(canIn);
       setCanClockOut(canOut);
+      setHasBlockingPendingIn(pendingIn);
+      setHasBlockingPendingOut(pendingOut);
       setTodayRecords(records);
       setPendingSyncCount(syncCount);
 
@@ -273,7 +297,15 @@ export const HomeScreen: React.FC = () => {
   }, [todayRecords]);
 
   const handleClockIn = async () => {
-    if (!canClockIn || isProcessing) {
+    if (isProcessing) return;
+    if (hasBlockingPendingIn) {
+      Alert.alert(
+        'Sincronizando',
+        'Tu marcaje anterior se está sincronizando. Esperá unos segundos.'
+      );
+      return;
+    }
+    if (!canClockIn) {
       Alert.alert('No disponible', 'Ya has marcado tu entrada');
       return;
     }
@@ -303,7 +335,15 @@ export const HomeScreen: React.FC = () => {
   };
 
   const handleClockOut = () => {
-    if (!canClockOut || isProcessing) {
+    if (isProcessing) return;
+    if (hasBlockingPendingOut) {
+      Alert.alert(
+        'Sincronizando',
+        'Tu marcaje anterior se está sincronizando. Esperá unos segundos.'
+      );
+      return;
+    }
+    if (!canClockOut) {
       Alert.alert('No disponible', 'Debes marcar tu entrada primero');
       return;
     }
@@ -440,18 +480,18 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
-      {/* Sync Badge */}
-      {pendingSyncCount > 0 && (
-        <View style={styles.syncBadge}>
-          <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
-        </View>
-      )}
-
       {/* Location Status Banner */}
       <LocationStatusBanner
         servicesStatus={servicesStatus}
         onRequestPermission={requestPermission}
       />
+
+      {/* Sync Badge — debajo del banner para que no se tapen */}
+      {pendingSyncCount > 0 && (
+        <View style={styles.syncBadge}>
+          <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.content}

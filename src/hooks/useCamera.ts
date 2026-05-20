@@ -120,10 +120,11 @@ export const useCamera = (): UseCameraReturn => {
       }
 
       // Launch camera (front-facing for selfie attendance photos)
+      // quality 0.5: balance entre identidad reconocible y RAM en devices de gama baja
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 0.7,
+        quality: 0.5,
         exif: false,
         cameraType: ImagePicker.CameraType.front,
       });
@@ -162,7 +163,7 @@ export const useCamera = (): UseCameraReturn => {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 0.7,
+        quality: 0.5,
         exif: false,
       });
 

@@ -159,9 +159,9 @@ export const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   syncBadge: {
-    position: 'absolute',
-    top: SPACING.md,
-    right: SPACING.md,
+    alignSelf: 'flex-end',
+    marginTop: SPACING.sm,
+    marginRight: SPACING.md,
     backgroundColor: COLORS.warning,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,

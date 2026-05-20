@@ -22,6 +22,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/authStore';
 import { useLocation } from '@hooks/useLocation';
 import { attendanceService } from '@services/attendance';
+import { attendanceRecordService } from '@services/storage';
+import { syncService } from '@services/sync';
 import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
@@ -88,7 +90,9 @@ const clockStyles = StyleSheet.create({
 });
 
 const AUTO_LOGOUT_DELAY = 3000; // 3 segundos despues de marcar
-const INACTIVITY_TIMEOUT = 30000; // 30 segundos de inactividad
+// 60s deja margen para tomar foto + esperar GPS frío + responder Alerts
+// sin que el warning aparezca en mitad de un marcaje legítimo.
+const INACTIVITY_TIMEOUT = 60000; // 60 segundos de inactividad
 const INACTIVITY_WARNING = 10; // 10 segundos de cuenta regresiva
 
 export const KioskHomeScreen: React.FC = () => {
@@ -104,6 +108,11 @@ export const KioskHomeScreen: React.FC = () => {
   const [selectedType, setSelectedType] = useState<AttendanceType | null>(null);
   const [canClockIn, setCanClockIn] = useState(true);
   const [canClockOut, setCanClockOut] = useState(false);
+  // Banderas independientes para distinguir "bloqueado por pending local"
+  // del bloqueo normal por estado de la jornada en el cloud — habilita
+  // mostrar el mensaje correcto al usuario.
+  const [hasBlockingPendingIn, setHasBlockingPendingIn] = useState(false);
+  const [hasBlockingPendingOut, setHasBlockingPendingOut] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingType, setProcessingType] = useState<AttendanceType | null>(null);
@@ -245,11 +254,16 @@ export const KioskHomeScreen: React.FC = () => {
   }, [showInactivityWarning, silentLogout]);
 
   /**
-   * Resetear timer cuando cambia el estado de procesamiento o camara
+   * Resetear timer cuando cambia el estado de procesamiento o camara.
+   * Al ENTRAR a procesando/cámara cancelamos el timer previo: el flujo de
+   * marcaje no es inactividad y no debe disparar warning en medio.
    */
   useEffect(() => {
     if (!isProcessing && !showCamera) {
       resetInactivityTimer();
+    } else if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
     }
   }, [isProcessing, showCamera, resetInactivityTimer]);
 
@@ -297,21 +311,42 @@ export const KioskHomeScreen: React.FC = () => {
         tenantId,
       });
 
+      // Force sync attempt antes de chequear: si el ack del último marcaje
+      // se perdió, esto puede limpiar el pending local antes del check y
+      // evitar bloqueo innecesario del botón.
+      if (await syncService.needsSync()) {
+        try {
+          await syncService.syncPendingRecords();
+        } catch (syncErr) {
+          console.warn('[KioskHomeScreen] Force sync attempt failed (continuamos):', syncErr);
+        }
+      }
+
       // Query Supabase (cloud) usando RPC con tenant_id para bypass RLS
-      const [canIn, canOut] = await Promise.all([
+      // + chequeo de pending local (con timeout para evitar bloqueo perpetuo)
+      const [canIn, canOut, pendingIn, pendingOut] = await Promise.all([
         attendanceService.canClockInFromCloud(kioskUser.cedula, tenantId || undefined),
         attendanceService.canClockOutFromCloud(kioskUser.cedula, tenantId || undefined),
+        attendanceRecordService.hasBlockingPendingByType(kioskUser.cedula, 'clock_in'),
+        attendanceRecordService.hasBlockingPendingByType(kioskUser.cedula, 'clock_out'),
       ]);
 
-      console.log('[KioskHomeScreen] Cloud status:', { canIn, canOut });
+      console.log('[KioskHomeScreen] Status:', { canIn, canOut, pendingIn, pendingOut });
 
+      // canClockIn/Out reflejan solo el estado de la jornada en el cloud;
+      // el bloqueo por pending local se enfuerza en el handler para que el
+      // botón siga tocable y poder mostrar el Alert "Sincronizando".
       setCanClockIn(canIn);
       setCanClockOut(canOut);
+      setHasBlockingPendingIn(pendingIn);
+      setHasBlockingPendingOut(pendingOut);
     } catch (error) {
       console.error('[KioskHomeScreen] Load attendance status error:', error);
       // On error, default to allowing clock in
       setCanClockIn(true);
       setCanClockOut(false);
+      setHasBlockingPendingIn(false);
+      setHasBlockingPendingOut(false);
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +356,15 @@ export const KioskHomeScreen: React.FC = () => {
    * Handle clock in button
    */
   const handleClockIn = () => {
-    if (!canClockIn || isProcessing) {
+    if (isProcessing) return;
+    if (hasBlockingPendingIn) {
+      Alert.alert(
+        'Sincronizando',
+        'Tu marcaje anterior se está sincronizando. Esperá unos segundos.'
+      );
+      return;
+    }
+    if (!canClockIn) {
       Alert.alert('No disponible', 'Ya has marcado tu entrada');
       return;
     }
@@ -334,7 +377,15 @@ export const KioskHomeScreen: React.FC = () => {
    * Handle clock out button
    */
   const handleClockOut = () => {
-    if (!canClockOut || isProcessing) {
+    if (isProcessing) return;
+    if (hasBlockingPendingOut) {
+      Alert.alert(
+        'Sincronizando',
+        'Tu marcaje anterior se está sincronizando. Esperá unos segundos.'
+      );
+      return;
+    }
+    if (!canClockOut) {
       Alert.alert('No disponible', 'Debes marcar tu entrada primero');
       return;
     }

@@ -72,17 +72,22 @@ export const useLocation = (): UseLocationResult => {
    */
   const checkPermission = async () => {
     try {
-      const { status } = await Location.getForegroundPermissionsAsync();
+      const [{ status }, isEnabled] = await Promise.all([
+        Location.getForegroundPermissionsAsync(),
+        Location.hasServicesEnabledAsync(),
+      ]);
       const granted = status === 'granted';
-      setHasPermission(granted);
 
-      if (granted) {
-        // Also check if location services are enabled
-        const isEnabled = await Location.hasServicesEnabledAsync();
-        if (!isEnabled) {
-          console.warn('[useLocation] Location services are disabled');
-          setError('Los servicios de ubicación están desactivados');
-        }
+      setHasPermission(granted);
+      setServicesStatus({
+        isEnabled,
+        hasPermission: granted,
+        isReady: isEnabled && granted,
+      });
+
+      if (granted && !isEnabled) {
+        console.warn('[useLocation] Location services are disabled');
+        setError('Los servicios de ubicación están desactivados');
       }
 
       return granted;
@@ -117,14 +122,22 @@ export const useLocation = (): UseLocationResult => {
       }
 
       const { status } = await Location.requestForegroundPermissionsAsync();
+      const granted = status === 'granted';
 
-      if (status === 'granted') {
-        setHasPermission(true);
+      // Sync both states so LocationStatusBanner re-renders correctly
+      // (servicesStatus.hasPermission was previously stale after a grant).
+      setHasPermission(granted);
+      setServicesStatus({
+        isEnabled,
+        hasPermission: granted,
+        isReady: isEnabled && granted,
+      });
+
+      if (granted) {
         setError(null);
         console.log('[useLocation] Permission granted');
         return true;
       } else {
-        setHasPermission(false);
         const errorMsg = 'Se requiere permiso de ubicación para marcar asistencia';
         setError(errorMsg);
         console.log('[useLocation] Permission denied, status:', status);
@@ -192,11 +205,36 @@ export const useLocation = (): UseLocationResult => {
 
       // Get current position with increased timeout
       // This works even without internet connection!
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced, // Balance between accuracy and speed
-        timeInterval: 10000, // Max time to wait (10 seconds)
-        distanceInterval: 0, // Always get new location
-      });
+      // Retry with Low accuracy when Balanced fails (typical on cold GPS
+      // or older devices with outdated Play Services demanding settings
+      // that Balanced exposes but Low does not).
+      let position;
+      try {
+        position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 10000,
+          distanceInterval: 0,
+        });
+      } catch (firstErr) {
+        const code = (firstErr as { code?: string })?.code;
+        // Only retry for settings-unsatisfied (the failure mode we saw on
+        // outdated Play Services). Timeouts and permission revocations
+        // shouldn't double the wait time on the user.
+        if (code !== 'ERR_LOCATION_SETTINGS_UNSATISFIED' && code !== undefined) {
+          throw firstErr;
+        }
+        console.warn(
+          '[useLocation] Balanced attempt failed (code:',
+          code,
+          '), retrying with Low accuracy'
+        );
+        position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Low,
+          timeInterval: 10000,
+          distanceInterval: 0,
+        });
+        console.log('[useLocation] Retry with Low accuracy succeeded');
+      }
 
       const coords: LocationCoords = {
         latitude: position.coords.latitude,
@@ -230,13 +268,9 @@ export const useLocation = (): UseLocationResult => {
       setError(errorMessage);
       setIsLoading(false);
 
-      // Show user-friendly error
-      Alert.alert(
-        'Error de ubicación',
-        errorMessage + '\n\nAsegúrate de que:\n• El GPS esté activado\n• La app tenga permisos de ubicación\n• Estés en un lugar con buena señal GPS',
-        [{ text: 'Entendido' }]
-      );
-
+      // The caller (HomeScreen/KioskHomeScreen) already prompts the user
+      // with "Ubicación no disponible. ¿Continuar?" when this returns null,
+      // so we no longer show an intrusive Alert here that doubles the prompt.
       return null;
     }
   }, [requestPermission]);

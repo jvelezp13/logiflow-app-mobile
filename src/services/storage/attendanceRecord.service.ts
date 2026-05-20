@@ -427,6 +427,41 @@ export const attendanceRecordService = {
   },
 
   /**
+   * Detecta si hay un marcaje del mismo tipo todavía sincronizando que debe
+   * bloquear que el usuario marque de nuevo. Solo bloquea pending recientes
+   * (<= maxAgeMinutes) para evitar bloqueo perpetuo si un sync queda atascado.
+   */
+  async hasBlockingPendingByType(
+    userCedula: string,
+    type: AttendanceType,
+    maxAgeMinutes: number = 10
+  ): Promise<boolean> {
+    try {
+      const cutoff = Date.now() - maxAgeMinutes * 60 * 1000;
+      const count = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.and(
+            Q.where('user_cedula', userCedula),
+            Q.where('attendance_type', type),
+            Q.where('timestamp', Q.gte(cutoff)),
+            Q.where('sync_attempts', Q.lt(10)),
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'syncing'),
+              Q.where('sync_status', 'error')
+            )
+          )
+        )
+        .fetchCount();
+      return count > 0;
+    } catch (error) {
+      console.error('[AttendanceRecordService] hasBlockingPendingByType error:', error);
+      return false;
+    }
+  },
+
+  /**
    * Cuenta los registros que el sync automatico aun procesa (attempts < 10).
    * Debe coincidir con el criterio de getPendingSync para que el badge "X pendientes"
    * no muestre huerfanos invisibles al pipeline.
