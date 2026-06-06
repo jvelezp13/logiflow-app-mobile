@@ -804,20 +804,36 @@ export const attendanceRecordService = {
    * Delete record by timestamp
    * Used to sync deletions from Web Admin
    */
-  async deleteByTimestamp(timestamp: number): Promise<boolean> {
+  async deleteByTimestamp(
+    timestamp: number,
+    options?: { userCedula?: string; currentTenantId?: string | null }
+  ): Promise<boolean> {
     try {
       const records = await database
         .get<AttendanceRecord>('attendance_records')
         .query(Q.where('timestamp', timestamp))
         .fetch();
 
-      if (records.length === 0) {
-        console.log('[AttendanceRecordService] No record found with timestamp:', timestamp);
+      const matchingRecords = records.filter((record) => {
+        if (record.attendanceSyncStatus !== 'synced') {
+          return false;
+        }
+        if (options?.userCedula && record.userCedula !== options.userCedula) {
+          return false;
+        }
+        if (options?.currentTenantId) {
+          return record.tenantId === options.currentTenantId;
+        }
+        return true;
+      });
+
+      if (matchingRecords.length === 0) {
+        console.log('[AttendanceRecordService] No synced matching record found with timestamp:', timestamp);
         return false;
       }
 
       await database.write(async () => {
-        await records[0].markAsDeleted();
+        await matchingRecords[0].markAsDeleted();
       });
 
       console.log('[AttendanceRecordService] Record deleted by timestamp:', timestamp);
@@ -825,6 +841,76 @@ export const attendanceRecordService = {
     } catch (error) {
       console.error('[AttendanceRecordService] Delete by timestamp error:', error);
       return false;
+    }
+  },
+
+  /**
+   * Delete synced local records that are no longer present in the remote pull window.
+   *
+   * This is a defensive reconciliation for admin edits that may change
+   * `timestamp_local` in Supabase. The mobile app historically used timestamp as
+   * the local identity, so a changed remote timestamp can otherwise leave the old
+   * synced timestamp as a ghost record and create a second adjusted record.
+   *
+   * Never deletes pending/error/syncing records, because those are not yet safely
+   * represented by the remote authoritative set.
+   */
+  async deleteSyncedMissingFromRemote(params: {
+    userCedula: string;
+    minDate: string;
+    remoteTimestamps: number[];
+    deletedRemoteTimestamps?: number[];
+    tenantIds?: string[];
+    currentTenantId?: string | null;
+  }): Promise<number> {
+    try {
+      const authoritativeTimestamps = new Set([
+        ...params.remoteTimestamps,
+        ...(params.deletedRemoteTimestamps || []),
+      ]);
+      const tenantIdSet = new Set((params.tenantIds || []).filter(Boolean));
+      if (params.currentTenantId) {
+        tenantIdSet.add(params.currentTenantId);
+      }
+
+      const candidates = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.where('user_cedula', params.userCedula),
+          Q.where('date', Q.gte(params.minDate)),
+          Q.where('sync_status', 'synced'),
+        )
+        .fetch();
+
+      const staleRecords = candidates.filter((record) => {
+        if (authoritativeTimestamps.has(record.timestamp)) {
+          return false;
+        }
+
+        // If tenant information is available, only delete records confidently
+        // belonging to this tenant. Missing local tenant_id is intentionally
+        // treated as unsafe on shared devices where cedula can overlap.
+        if (tenantIdSet.size > 0) {
+          return !!record.tenantId && tenantIdSet.has(record.tenantId);
+        }
+
+        return true;
+      });
+
+      if (staleRecords.length === 0) {
+        return 0;
+      }
+
+      console.log(`[AttendanceRecordService] Removing ${staleRecords.length} stale synced records missing from remote`);
+
+      await database.write(async () => {
+        await Promise.all(staleRecords.map((record) => record.markAsDeleted()));
+      });
+
+      return staleRecords.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] deleteSyncedMissingFromRemote error:', error);
+      return 0;
     }
   },
 

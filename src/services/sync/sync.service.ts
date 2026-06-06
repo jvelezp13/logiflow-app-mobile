@@ -936,6 +936,8 @@ export const syncService = {
 
       // Process deleted records - remove local copies
       let deleted = 0;
+      const currentTenantId = getTenantId();
+
       if (deletedRecords && deletedRecords.length > 0) {
         console.log(`[SyncService] Found ${deletedRecords.length} deleted records in Supabase`);
 
@@ -945,7 +947,10 @@ export const syncService = {
           // Only delete if we have it locally
           if (localTimestampSet.has(deletedRecord.timestamp_local)) {
             try {
-              const wasDeleted = await attendanceRecordService.deleteByTimestamp(deletedRecord.timestamp_local);
+              const wasDeleted = await attendanceRecordService.deleteByTimestamp(deletedRecord.timestamp_local, {
+                userCedula,
+                currentTenantId,
+              });
               if (wasDeleted) {
                 deleted++;
                 // Remove from local set so we don't try to process it again
@@ -973,6 +978,18 @@ export const syncService = {
       }
 
       console.log(`[SyncService] Found ${remoteRecords.length} remote records`);
+
+      const activeRemoteTimestamps = remoteRecords
+        .map((record) => record.timestamp_local)
+        .filter((timestamp): timestamp is number => !!timestamp);
+      const deletedRemoteTimestamps = (deletedRecords || [])
+        .map((record) => record.timestamp_local)
+        .filter((timestamp): timestamp is number => !!timestamp);
+      const remoteTenantIds = Array.from(new Set(
+        remoteRecords
+          .map((record) => record.tenant_id)
+          .filter((tenantId): tenantId is string => !!tenantId),
+      ));
 
       // Get local records with their remote_updated_at timestamps
       const localRecordsMap = await attendanceRecordService.getLocalRecordsWithRemoteUpdate();
@@ -1047,7 +1064,21 @@ export const syncService = {
         }
       }
 
-      console.log(`[SyncService] Pull complete: ${pulled} new, ${updated} updated, ${deleted} deleted`);
+      // Defensive reconciliation: if an admin adjustment changed timestamp_local,
+      // the adjusted row arrives as new and the old synced local timestamp becomes
+      // a ghost unless the server also exposes it as a soft-deleted row.
+      const staleDeleted = await attendanceRecordService.deleteSyncedMissingFromRemote({
+        userCedula,
+        minDate,
+        remoteTimestamps: activeRemoteTimestamps,
+        deletedRemoteTimestamps,
+        tenantIds: remoteTenantIds,
+        currentTenantId,
+      });
+
+      const totalDeleted = deleted + staleDeleted;
+
+      console.log(`[SyncService] Pull complete: ${pulled} new, ${updated} updated, ${totalDeleted} deleted (${staleDeleted} stale)`);
 
       // Cleanup old synced records to keep local DB light (optimized for low-capacity devices)
       const cleaned = await attendanceRecordService.cleanupOldRecords(30);
@@ -1066,7 +1097,7 @@ export const syncService = {
         success: true,
         pulled,
         updated: updated > 0 ? updated : undefined,
-        deleted: deleted > 0 ? deleted : undefined,
+        deleted: totalDeleted > 0 ? totalDeleted : undefined,
         cleaned: cleaned > 0 ? cleaned : undefined,
         alreadyLocal: remoteRecords.length - newRecords.length - updatedRecords.length,
       };
