@@ -1,19 +1,17 @@
 /**
  * CierresService
  *
- * Service for managing employee weekly closures.
- * Includes operations for reading, confirming, and objecting closures.
+ * Service for reading employee weekly closures.
  */
 
-import { supabase } from './supabase/client';
+import { supabase } from "./supabase/client";
 import type {
-  CierreSemanal,
-  CierreResumen,
-  EstadoCierre,
-  ObjecionDia,
-  EstadisticasCierres,
-  DatosSemana,
-} from '@/types/cierres.types';
+	CierreSemanal,
+	CierreResumen,
+	EstadoCierre,
+	EstadisticasCierres,
+	DatosSemana,
+} from "@/types/cierres.types";
 
 // =====================================================
 // TIPOS INTERNOS PARA SUPABASE
@@ -23,25 +21,15 @@ import type {
  * Row type for cierres_semanales table (not in generated types)
  */
 interface CierreRow {
-  id: string;
-  cedula: string;
-  semana_inicio: string;
-  semana_fin: string;
-  estado: string;
-  datos_semana: DatosSemana;
-  publicado_at: string | null;
-  confirmado_at: string | null;
-  objecion_dias: ObjecionDia[] | null;
-  objecion_at: string | null;
-  // Campos de respuesta del admin (B6)
-  respuesta_admin: string | null;
-  respondido_at: string | null;
-  respondido_por: string | null;
-  // Campos de evidencia de confirmación (B7)
-  foto_confirmacion_url: string | null;
-  vencido_at: string | null;
-  created_at: string;
-  updated_at: string;
+	id: string;
+	cedula: string;
+	semana_inicio: string;
+	semana_fin: string;
+	estado: string;
+	datos_semana: DatosSemana;
+	publicado_at: string | null;
+	created_at: string;
+	updated_at: string;
 }
 
 // =====================================================
@@ -49,14 +37,14 @@ interface CierreRow {
 // =====================================================
 
 class CierresService {
-  /**
-   * Obtiene todos los cierres del empleado
-   */
-  async obtenerCierres(cedula: string): Promise<CierreResumen[]> {
-    // Use type assertion since table is not in generated types
-    const { data, error } = await (supabase
-      .from('cierres_semanales' as never)
-      .select(`
+	/**
+	 * Obtiene todos los cierres del empleado
+	 */
+	async obtenerCierres(cedula: string): Promise<CierreResumen[]> {
+		// Use type assertion since table is not in generated types
+		const { data, error } = await (supabase
+			.from("cierres_semanales" as never)
+			.select(`
         id,
         semana_inicio,
         semana_fin,
@@ -64,198 +52,81 @@ class CierresService {
         datos_semana,
         publicado_at
       `)
-      .eq('cedula', cedula)
-      .order('semana_inicio', { ascending: false })
-      .limit(4) as unknown as Promise<{
-        data: CierreRow[] | null;
-        error: Error | null;
-      }>);
+			.eq("cedula", cedula)
+			.order("semana_inicio", { ascending: false })
+			.limit(4) as unknown as Promise<{
+			data: CierreRow[] | null;
+			error: Error | null;
+		}>);
 
-    if (error) {
-      console.error('[CierresService] Error obteniendo cierres:', error);
-      throw error;
-    }
+		if (error) {
+			console.error("[CierresService] Error obteniendo cierres:", error);
+			throw error;
+		}
 
-    return (data || []).map((cierre) => ({
-      id: cierre.id,
-      semana_inicio: cierre.semana_inicio,
-      semana_fin: cierre.semana_fin,
-      estado: cierre.estado as EstadoCierre,
-      horas_trabajadas: cierre.datos_semana?.totales?.horas_trabajadas || 0,
-      publicado_at: cierre.publicado_at,
-    }));
-  }
+		return (data || []).map((cierre) => ({
+			id: cierre.id,
+			semana_inicio: cierre.semana_inicio,
+			semana_fin: cierre.semana_fin,
+			estado: cierre.estado as EstadoCierre,
+			horas_trabajadas: cierre.datos_semana?.totales?.horas_trabajadas || 0,
+			publicado_at: cierre.publicado_at,
+		}));
+	}
 
-  /**
-   * Obtiene un cierre por ID con todos los detalles
-   */
-  async obtenerCierrePorId(id: string): Promise<CierreSemanal | null> {
-    const { data, error } = await (supabase
-      .from('cierres_semanales' as never)
-      .select('*')
-      .eq('id', id)
-      .single() as unknown as Promise<{
-        data: CierreRow | null;
-        error: Error | null;
-      }>);
+	/**
+	 * Obtiene un cierre por ID con todos los detalles vivos para móvil.
+	 */
+	async obtenerCierrePorId(id: string): Promise<CierreSemanal | null> {
+		const { data, error } = await (supabase
+			.from("cierres_semanales" as never)
+			.select(`
+        id,
+        cedula,
+        semana_inicio,
+        semana_fin,
+        estado,
+        datos_semana,
+        publicado_at,
+        created_at,
+        updated_at
+      `)
+			.eq("id", id)
+			.single() as unknown as Promise<{
+			data: CierreRow | null;
+			error: Error | null;
+		}>);
 
-    if (error) {
-      console.error('[CierresService] Error obteniendo cierre:', error);
-      return null;
-    }
+		if (error) {
+			console.error("[CierresService] Error obteniendo cierre:", error);
+			return null;
+		}
 
-    return data as CierreSemanal;
-  }
+		return data as CierreSemanal;
+	}
 
-  /**
-   * Confirma un cierre semanal
-   * Solo se puede confirmar si el estado es 'publicado'
-   */
-  async confirmarCierre(id: string): Promise<boolean> {
-    const { error } = await (supabase
-      .from('cierres_semanales' as never)
-      .update({
-        estado: 'confirmado',
-        confirmado_at: new Date().toISOString(),
-      } as never)
-      .eq('id', id)
-      .eq('estado', 'publicado') as unknown as Promise<{
-        data: unknown;
-        error: Error | null;
-      }>);
+	/**
+	 * Obtiene estadísticas de cierres del empleado
+	 */
+	async obtenerEstadisticas(cedula: string): Promise<EstadisticasCierres> {
+		const { data, error } = await (supabase
+			.from("cierres_semanales" as never)
+			.select("estado")
+			.eq("cedula", cedula) as unknown as Promise<{
+			data: { estado: string }[] | null;
+			error: Error | null;
+		}>);
 
-    if (error) {
-      console.error('[CierresService] Error confirmando cierre:', error);
-      return false;
-    }
+		if (error) {
+			console.error("[CierresService] Error obteniendo estadísticas:", error);
+			return { pendientes: 0 };
+		}
 
-    return true;
-  }
-
-  /**
-   * Objeta un cierre semanal con comentarios por día
-   * Solo se puede objetar si el estado es 'publicado'
-   */
-  async objetarCierre(id: string, objeciones: ObjecionDia[]): Promise<boolean> {
-    const { error } = await (supabase
-      .from('cierres_semanales' as never)
-      .update({
-        estado: 'objetado',
-        objecion_dias: objeciones,
-        objecion_at: new Date().toISOString(),
-      } as never)
-      .eq('id', id)
-      .eq('estado', 'publicado') as unknown as Promise<{
-        data: unknown;
-        error: Error | null;
-      }>);
-
-    if (error) {
-      console.error('[CierresService] Error objetando cierre:', error);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Obtiene estadísticas de cierres del empleado
-   */
-  async obtenerEstadisticas(cedula: string): Promise<EstadisticasCierres> {
-    const { data, error } = await (supabase
-      .from('cierres_semanales' as never)
-      .select('estado')
-      .eq('cedula', cedula) as unknown as Promise<{
-        data: { estado: string }[] | null;
-        error: Error | null;
-      }>);
-
-    if (error) {
-      console.error('[CierresService] Error obteniendo estadísticas:', error);
-      return { pendientes: 0, confirmados: 0, objetados: 0, vencidos: 0 };
-    }
-
-    const cierres = (data || []) as { estado: EstadoCierre }[];
-    return {
-      pendientes: cierres.filter((c) => c.estado === 'publicado').length,
-      confirmados: cierres.filter((c) => c.estado === 'confirmado').length,
-      objetados: cierres.filter((c) => c.estado === 'objetado').length,
-      vencidos: cierres.filter((c) => c.estado === 'vencido').length,
-    };
-  }
-
-  /**
-   * Sube foto de confirmación a Storage
-   * Retorna URL pública o null si falla
-   */
-  async uploadFotoConfirmacion(
-    cierreId: string,
-    cedula: string,
-    fotoBase64: string
-  ): Promise<string | null> {
-    try {
-      const timestamp = Date.now();
-
-      // Limpiar prefijo base64 si existe
-      const fotoData = fotoBase64.replace(/^data:image\/\w+;base64,/, '');
-
-      // Convertir base64 a Uint8Array
-      const fotoBytes = Uint8Array.from(atob(fotoData), (c) => c.charCodeAt(0));
-
-      // Subir foto
-      const fotoFileName = `cierres/${cedula}/${cierreId}_foto_${timestamp}.jpg`;
-      const { error: fotoError } = await supabase.storage
-        .from('attendance_photos')
-        .upload(fotoFileName, fotoBytes, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
-
-      if (fotoError) {
-        console.error('[CierresService] Error subiendo foto:', fotoError);
-        throw fotoError;
-      }
-
-      // Obtener URL pública
-      const { data: fotoUrlData } = supabase.storage
-        .from('attendance_photos')
-        .getPublicUrl(fotoFileName);
-
-      return fotoUrlData.publicUrl;
-    } catch (error) {
-      console.error('[CierresService] Error subiendo foto confirmación:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Confirma un cierre semanal con foto de evidencia
-   * Solo se puede confirmar si el estado es 'publicado'
-   */
-  async confirmarCierreConFoto(
-    id: string,
-    fotoUrl: string
-  ): Promise<boolean> {
-    const { error } = await (supabase
-      .from('cierres_semanales' as never)
-      .update({
-        estado: 'confirmado',
-        confirmado_at: new Date().toISOString(),
-        foto_confirmacion_url: fotoUrl,
-      } as never)
-      .eq('id', id)
-      .eq('estado', 'publicado') as unknown as Promise<{
-        data: unknown;
-        error: Error | null;
-      }>);
-
-    if (error) {
-      console.error('[CierresService] Error confirmando cierre con foto:', error);
-      return false;
-    }
-
-    return true;
-  }
+		const cierres = (data || []) as { estado: EstadoCierre }[];
+		return {
+			pendientes: cierres.filter((c) => c.estado === "publicado").length,
+		};
+	}
 }
 
 export const cierresService = new CierresService();
