@@ -54,3 +54,7 @@ supabase/.temp/
 
 # gentle-ai CLI local metadata (skill registry cache)
 .atl/
+
+# pi tool local config + generated context (no es codigo del proyecto)
+.pi/
+context.md
