@@ -29,6 +29,7 @@ export type RootStackParamList = {
   ReportarMarcajeFaltante:
     | { tipoSugerido?: 'clock_in' | 'clock_out'; fechaSugerida?: string }
     | undefined;
+  MisSolicitudes: undefined;
   DetalleNovedad: { novedadId: string };
 };
 

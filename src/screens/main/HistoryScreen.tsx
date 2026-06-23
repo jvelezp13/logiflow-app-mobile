@@ -222,6 +222,18 @@ export const HistoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      {/* Acceso a Mis solicitudes (el título "Historial" ya lo pone el header del tab) */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={styles.misSolicitudesLink}
+          onPress={() => navigation.navigate('MisSolicitudes')}
+          accessibilityLabel="Ver mis solicitudes"
+        >
+          <MaterialCommunityIcons name="file-document-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.misSolicitudesLinkText}>Mis solicitudes</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Filters */}
       <View style={styles.filtersContainer}>
         {renderFilterButton('today', 'Hoy')}

@@ -13,7 +13,9 @@ import novedadesService, {
 
 export const useNovedades = () => {
   const [novedades, setNovedades] = useState<Novedad[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Arranca en true: el useEffect carga al montar, así evitamos el frame inicial
+  // que mostraría "Sin solicitudes" antes de la primera carga.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [estadisticas, setEstadisticas] = useState({

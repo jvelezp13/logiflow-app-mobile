@@ -564,8 +564,11 @@ class NovedadesService {
 	 * Suscripción a cambios en tiempo real de las novedades del usuario
 	 */
 	suscribirACambios(userId: string, callback: (novedad: Novedad) => void) {
+		// Canal por usuario: evita que dos pantallas con useNovedades montadas a la
+		// vez (o el mismo canal compartido) dupliquen handlers y disparen el Alert
+		// de actualización dos veces.
 		const channel = supabase
-			.channel("novedades_changes")
+			.channel(`novedades_changes_${userId}`)
 			.on(
 				"postgres_changes",
 				{

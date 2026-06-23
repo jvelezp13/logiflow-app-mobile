@@ -16,6 +16,25 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    backgroundColor: COLORS.surface,
+  },
+  misSolicitudesLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  misSolicitudesLinkText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.primary,
+  },
   filtersContainer: {
     flexDirection: 'row',
     padding: SPACING.md,

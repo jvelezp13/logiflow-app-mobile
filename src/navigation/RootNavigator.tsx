@@ -17,6 +17,7 @@ import { KioskNavigator } from './KioskNavigator';
 import { PermissionsRequest } from '@components/PermissionsRequest';
 import SolicitarAjusteScreen from '@screens/novedades/SolicitarAjusteScreen';
 import ReportarMarcajeFaltanteScreen from '@screens/novedades/ReportarMarcajeFaltanteScreen';
+import MisSolicitudesScreen from '@screens/novedades/MisSolicitudesScreen';
 import DetalleNovedadScreen from '@screens/novedades/DetalleNovedadScreen';
 import { COLORS } from '@constants/theme';
 
@@ -94,6 +95,11 @@ export const RootNavigator: React.FC = () => {
             name="ReportarMarcajeFaltante"
             component={ReportarMarcajeFaltanteScreen}
             options={{ ...floatingScreenOptions, title: 'Marcaje Faltante' }}
+          />
+          <Stack.Screen
+            name="MisSolicitudes"
+            component={MisSolicitudesScreen}
+            options={{ ...floatingScreenOptions, title: 'Mis Solicitudes' }}
           />
           <Stack.Screen
             name="DetalleNovedad"
