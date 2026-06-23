@@ -117,6 +117,19 @@ const AttendanceCardComponent: React.FC<AttendanceCardProps> = ({
       );
     }
 
+    if (record.isApprovedFromNovedad) {
+      return (
+        <View style={[styles.adminBadge, styles.adminBadgeApproved]}>
+          <MaterialCommunityIcons
+            name="clipboard-check-outline"
+            size={14}
+            color="#065F46"
+          />
+          <Text style={[styles.adminText, styles.adminTextApproved]}>Aprobado</Text>
+        </View>
+      );
+    }
+
     return null;
   };
 

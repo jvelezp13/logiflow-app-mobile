@@ -57,7 +57,7 @@ export class AttendanceRecord extends Model {
   @field('synced_at') syncedAt?: number;
 
   // Source tracking (for admin edits)
-  @field('fuente') fuente?: string; // 'mobile' | 'admin_manual' | 'admin_edit'
+  @field('fuente') fuente?: string; // 'mobile' | 'admin_manual' | 'admin_edit' | 'ajuste_aprobado'
   @field('remote_updated_at') remoteUpdatedAt?: number; // Timestamp of last remote update
 
   // Multi-tenant
@@ -132,9 +132,21 @@ export class AttendanceRecord extends Model {
   }
 
   /**
+   * Check if record was created by the admin approving a novedad
+   * (ajuste_marcaje o marcaje_faltante aprobados por el empleado).
+   */
+  get isApprovedFromNovedad(): boolean {
+    return this.fuente === 'ajuste_aprobado';
+  }
+
+  /**
    * Check if record has any admin modification
    */
   get hasAdminModification(): boolean {
-    return this.fuente === 'admin_manual' || this.fuente === 'admin_edit';
+    return (
+      this.fuente === 'admin_manual' ||
+      this.fuente === 'admin_edit' ||
+      this.fuente === 'ajuste_aprobado'
+    );
   }
 }

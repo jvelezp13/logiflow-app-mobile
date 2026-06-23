@@ -87,6 +87,9 @@ export const styles = StyleSheet.create({
   adminBadgeEdited: {
     backgroundColor: '#DBEAFE', // Light blue
   },
+  adminBadgeApproved: {
+    backgroundColor: '#D1FAE5', // Light green
+  },
   adminText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.medium,
@@ -95,6 +98,9 @@ export const styles = StyleSheet.create({
   },
   adminTextEdited: {
     color: '#1D4ED8', // Blue
+  },
+  adminTextApproved: {
+    color: '#065F46', // Green
   },
   chevron: {
     marginLeft: SPACING.xs,
