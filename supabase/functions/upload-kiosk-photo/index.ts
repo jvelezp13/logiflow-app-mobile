@@ -40,6 +40,10 @@ interface UploadRequest {
   recordId: string;
   // Datos completos para INSERT
   recordData?: RecordData;
+  // Tenant del kiosko. Opcional por compatibilidad; cuando llega se usa para
+  // scopear el lookup del PIN y evitar colisiones cross-tenant (4 dígitos →
+  // probabilidad real de colisión con múltiples tenants).
+  tenantId?: string;
 }
 
 serve(async (req) => {
@@ -57,6 +61,7 @@ serve(async (req) => {
       userId,
       recordId,
       recordData,
+      tenantId: requestTenantId,
     }: UploadRequest = await req.json();
 
     // Validate required fields
@@ -104,13 +109,21 @@ serve(async (req) => {
       }
     );
 
-    // Step 1: Validate PIN against profiles table
-    const { data: profile, error: profileError } = await supabaseAdmin
+    // Step 1: Validate PIN against profiles table.
+    // Si llega tenantId en la request, scopear el lookup para evitar colisiones
+    // de PIN de 4 dígitos entre tenants. Cuando todos los clientes mobile
+    // empiecen a enviar tenantId, hacer este campo obligatorio.
+    let profileQuery = supabaseAdmin
       .from('profiles')
       .select('user_id, cedula, nombre, apellido, activo, tenant_id')
       .eq('pin_code', pin)
-      .eq('activo', true)
-      .single();
+      .eq('activo', true);
+
+    if (requestTenantId) {
+      profileQuery = profileQuery.eq('tenant_id', requestTenantId);
+    }
+
+    const { data: profile, error: profileError } = await profileQuery.single();
 
     if (profileError || !profile) {
       console.error('[upload-kiosk-photo] PIN validation failed:', profileError);
@@ -128,6 +141,20 @@ serve(async (req) => {
       console.error('[upload-kiosk-photo] User ID mismatch');
       return new Response(
         JSON.stringify({ error: 'User ID does not match PIN' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Step 2b: Si llegan recordData, verificar que la cédula que se va a
+    // registrar coincida con el dueño del PIN. Sin esto, un atacante con
+    // un PIN propio válido podría inyectar marcajes para otro empleado.
+    if (recordData && recordData.cedula && recordData.cedula !== profile.cedula) {
+      console.error('[upload-kiosk-photo] Cedula mismatch with PIN owner');
+      return new Response(
+        JSON.stringify({ error: 'Cedula does not match PIN owner' }),
         {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -212,11 +239,14 @@ serve(async (req) => {
         );
       }
 
-      // Verificar si el registro ya existe (por timestamp_local)
+      // Verificar si el registro ya existe (por timestamp_local). Scopear por
+      // tenant_id porque service_role bypassea RLS: dos tenants con misma
+      // cedula podrían colisionar en este dedup sin el filtro explícito.
       const { data: existingRecords, error: selectError } = await supabaseAdmin
         .from('horarios_registros_diarios')
         .select('id')
         .eq('cedula', recordData.cedula)
+        .eq('tenant_id', tenantId)
         .eq('fecha', recordData.fecha)
         .eq('timestamp_local', recordData.timestamp_local)
         .limit(1);
@@ -257,6 +287,40 @@ serve(async (req) => {
           insertSuccess = true;
         }
       } else {
+        // Guard preventivo: si es clock_in, validar que no haya jornada abierta.
+        // Espeja al guard del flujo normal mobile + admin + constraint DB. Acá lo
+        // pedimos antes para devolver respuesta estructurada con datos de la
+        // jornada existente, en lugar de que el cliente reciba un check_violation
+        // crudo de Postgres.
+        if (recordData.tipo_marcaje === 'clock_in') {
+          const { data: jornadaAbierta } = await supabaseAdmin
+            .from('vista_jornadas_abiertas')
+            .select('fecha, hora_inicio_decimal, horas_abierta')
+            .eq('cedula', recordData.cedula)
+            .eq('tenant_id', tenantId)
+            .order('horas_abierta', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (jornadaAbierta) {
+            console.log('[upload-kiosk-photo] Open journey detected, rejecting clock_in');
+            return new Response(
+              JSON.stringify({
+                code: 'OPEN_JOURNEY',
+                error: 'El empleado ya tiene una jornada abierta sin cerrar',
+                fecha: jornadaAbierta.fecha,
+                hora_inicio_decimal: jornadaAbierta.hora_inicio_decimal,
+                horas_abierta: jornadaAbierta.horas_abierta,
+                photoUrl, // devolvemos URL aunque rechacemos el insert
+              }),
+              {
+                status: 409,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
+          }
+        }
+
         // Insertar nuevo registro
         const { error: insertError } = await supabaseAdmin
           .from('horarios_registros_diarios')
@@ -267,6 +331,37 @@ serve(async (req) => {
           if (insertError.code === '23505') {
             console.log('[upload-kiosk-photo] Record already exists (duplicate)');
             insertSuccess = true;
+          } else if (
+            insertError.code === '23514' &&
+            insertError.details === 'OPEN_JOURNEY_EXISTS'
+          ) {
+            // Race condition: el guard preventivo no detectó, pero el constraint DB
+            // sí. Re-consultamos la vista para devolver el mismo shape que el guard
+            // preventivo — así el cliente no tiene que manejar dos formas distintas.
+            console.log('[upload-kiosk-photo] Constraint rejected (race condition)');
+            const { data: jornadaAbierta } = await supabaseAdmin
+              .from('vista_jornadas_abiertas')
+              .select('fecha, hora_inicio_decimal, horas_abierta')
+              .eq('cedula', recordData.cedula)
+              .eq('tenant_id', tenantId)
+              .order('horas_abierta', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            return new Response(
+              JSON.stringify({
+                code: 'OPEN_JOURNEY',
+                error: 'El empleado ya tiene una jornada abierta sin cerrar',
+                fecha: jornadaAbierta?.fecha ?? null,
+                hora_inicio_decimal: jornadaAbierta?.hora_inicio_decimal ?? null,
+                horas_abierta: jornadaAbierta?.horas_abierta ?? null,
+                photoUrl,
+              }),
+              {
+                status: 409,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
           } else {
             console.error('[upload-kiosk-photo] Insert error:', insertError);
           }
