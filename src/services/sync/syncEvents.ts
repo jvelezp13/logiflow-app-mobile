@@ -54,6 +54,11 @@ export const SYNC_EVENTS = {
   // Emitido cuando syncPendingRecords proceso al menos un registro (synced+failed > 0).
   // Listeners (HomeScreen) lo usan para refrescar el badge sin esperar pull-to-refresh.
   SYNC_COMPLETED: 'sync_completed',
+  // Emitido cuando el backend rechazo un marcaje porque el empleado tiene una
+  // jornada abierta sin cerrar (constraint fn_prevent_jornada_duplicada). El
+  // registro local YA fue borrado en el sync; los listeners (HomeScreen) solo
+  // avisan al empleado para que contacte al administrador.
+  OPEN_JOURNEY_REJECTED: 'open_journey_rejected',
 } as const;
 
 /**

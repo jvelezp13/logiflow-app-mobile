@@ -160,6 +160,25 @@ export const HomeScreen: React.FC = () => {
     };
   }, [user?.id, user?.cedula]);
 
+  // Aviso cuando el backend rechaza un marcaje por jornada abierta sin cerrar.
+  // El registro local ya se borró en el sync (y el SYNC_COMPLETED ya refrescó el
+  // estado "Trabajando"), así que acá solo notificamos al empleado. Es la red de
+  // seguridad para los casos en que el pre-check de handleClockIn no disparó
+  // (versión vieja, fail-open por red lenta, o marcaje en kiosko).
+  useEffect(() => {
+    const handleOpenJourneyRejected = () => {
+      Alert.alert(
+        'No se pudo registrar tu entrada',
+        'Tenés una jornada abierta sin cerrar de un día anterior. Contactá a tu administrador para que la cierre y puedas marcar una nueva entrada.',
+        [{ text: 'Entendido' }]
+      );
+    };
+    syncEvents.on(SYNC_EVENTS.OPEN_JOURNEY_REJECTED, handleOpenJourneyRejected);
+    return () => {
+      syncEvents.off(SYNC_EVENTS.OPEN_JOURNEY_REJECTED, handleOpenJourneyRejected);
+    };
+  }, []);
+
   // roleConfig se usa para descontar minutosDescanso del total de horas del dia.
   const loadRoleConfig = async () => {
     if (!user?.id) return;

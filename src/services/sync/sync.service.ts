@@ -44,6 +44,9 @@ export type SyncResult = {
   success: boolean;
   recordId: string;
   error?: string;
+  // Discrimina el rechazo por jornada abierta del backend para que el batch
+  // pueda emitir OPEN_JOURNEY_REJECTED y avisar al empleado.
+  reason?: 'open_journey';
 };
 
 /**
@@ -461,14 +464,22 @@ export const syncService = {
       return { success: false, recordId: record.id, error: errorMsg };
     };
 
-    // Jornada abierta sin cerrar: huérfano permanente (no retriable hasta que
-    // el admin la cierre desde el panel correspondiente).
+    // Jornada abierta sin cerrar: el backend SIEMPRE rechazará este marcaje hasta
+    // que el admin cierre la jornada anterior. A diferencia de un orphan sin
+    // credenciales (recuperable), este registro NO es válido ni reintentable, así
+    // que lo borramos del local para no dejar un estado "Trabajando" fantasma ni
+    // reintentar en bucle. El empleado recibe aviso vía OPEN_JOURNEY_REJECTED.
     const failAsOpenJourney = async (detail: string): Promise<SyncResult> => {
-      await attendanceRecordService.markAsOrphan(record.id);
+      try {
+        await attendanceRecordService.delete(record.id);
+      } catch (delErr) {
+        console.error('[SyncService] Failed to delete open-journey record:', delErr);
+      }
       return {
         success: false,
         recordId: record.id,
         error: `${OPEN_JOURNEY_EF_CODE}: ${detail}`,
+        reason: 'open_journey',
       };
     };
 
@@ -673,6 +684,13 @@ export const syncService = {
         failed,
         total: pendingRecords.length,
       });
+
+      // Si algún marcaje fue rechazado por jornada abierta, avisar al empleado.
+      // El registro local ya fue borrado en processRecord, por lo que el
+      // SYNC_COMPLETED de arriba ya disparó el loadData que limpia "Trabajando".
+      if (results.some((r) => r.reason === 'open_journey')) {
+        syncEvents.emit(SYNC_EVENTS.OPEN_JOURNEY_REJECTED);
+      }
 
       return {
         total: pendingRecords.length,

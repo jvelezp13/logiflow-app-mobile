@@ -96,6 +96,20 @@ export const SolicitarAjusteScreen: React.FC = () => {
       return;
     }
 
+    // Bloquea ajustes no-op: el time picker arranca pre-cargado con la hora
+    // registrada, así que un empleado que describe el cambio en el motivo pero no
+    // mueve el selector enviaría hora_nueva == hora_real (ajuste que no corrige
+    // nada). Comparamos en HH:MM porque ese es el detalle que captura el picker.
+    const horaRealHHMM = horaActual.slice(0, 5);
+    const horaNuevaHHMM = `${String(horaNueva.getHours()).padStart(2, '0')}:${String(horaNueva.getMinutes()).padStart(2, '0')}`;
+    if (horaNuevaHHMM === horaRealHHMM) {
+      Alert.alert(
+        'La hora no cambió',
+        'La hora corregida es igual a la registrada. Ajustá la hora con el selector antes de enviar la solicitud.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
