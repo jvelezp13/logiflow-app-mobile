@@ -363,6 +363,30 @@ class NovedadesService {
 				};
 			}
 
+			// Evita solicitudes duplicadas: como marcaje_faltante va con marcaje_id NULL,
+			// los UNIQUE INDEX por marcaje_id no aplican. Sin este chequeo, un empleado
+			// que no se entera de que ya solicitó (sigue viendo el aviso de jornada
+			// abierta) podría montar varias para la misma fecha/tipo. La RLS ya scopea
+			// la consulta a sus propias novedades; igual filtramos por cédula+tenant.
+			const { data: pendienteExistente } = await supabase
+				.from("horarios_novedades")
+				.select("id")
+				.eq("cedula", cedula)
+				.eq("tenant_id", tenantId)
+				.eq("tipo_novedad", "marcaje_faltante")
+				.eq("tipo_marcaje", data.tipo_marcaje)
+				.eq("fecha", data.fecha)
+				.eq("estado", "pendiente")
+				.is("deleted_at", null)
+				.maybeSingle();
+			if (pendienteExistente) {
+				return {
+					success: false,
+					error:
+						"Ya tenés una solicitud pendiente para ese marcaje. Esperá a que tu supervisor la revise.",
+				};
+			}
+
 			const novedadData = {
 				user_id: user.id,
 				cedula,
