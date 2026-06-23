@@ -395,6 +395,43 @@ export const attendanceService = {
   },
 
   /**
+   * Versión kiosko de getOpenJourney: usa la RPC SECURITY DEFINER porque en
+   * modo kiosko no hay sesión Supabase y vista_jornadas_abiertas está bajo RLS.
+   * Fail-open: cualquier error devuelve null y deja que el backend rechace al
+   * sincronizar (defense in depth con el guard de la Edge Function).
+   */
+  async getOpenJourneyFromCloud(
+    userCedula: string,
+    tenantId: string
+  ): Promise<{ fecha: string; horaInicio: number; horasAbierta: number } | null> {
+    type RpcRow = { fecha: string; hora_inicio_decimal: number; horas_abierta: number };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (supabase.rpc as any)('get_open_journey_by_cedula', {
+        p_cedula: userCedula,
+        p_tenant_id: tenantId,
+      });
+
+      if (result.error) {
+        console.warn('[AttendanceService] getOpenJourneyFromCloud RPC error:', result.error);
+        return null;
+      }
+
+      const rows = result.data as RpcRow[] | null;
+      if (!rows || rows.length === 0) return null;
+
+      return {
+        fecha: rows[0].fecha,
+        horaInicio: rows[0].hora_inicio_decimal,
+        horasAbierta: rows[0].horas_abierta,
+      };
+    } catch (error) {
+      console.warn('[AttendanceService] getOpenJourneyFromCloud exception:', error);
+      return null;
+    }
+  },
+
+  /**
    * Check if user can clock out by cédula
    * Considera marcajes de todos los dispositivos
    */

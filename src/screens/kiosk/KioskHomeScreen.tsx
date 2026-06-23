@@ -28,6 +28,7 @@ import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
 import type { AttendanceType } from '@services/storage';
+import { decimalToAmPm, formatFechaCorta } from '@utils/dateUtils';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 
 /**
@@ -355,7 +356,7 @@ export const KioskHomeScreen: React.FC = () => {
   /**
    * Handle clock in button
    */
-  const handleClockIn = () => {
+  const handleClockIn = async () => {
     if (isProcessing) return;
     if (hasBlockingPendingIn) {
       Alert.alert(
@@ -367,6 +368,33 @@ export const KioskHomeScreen: React.FC = () => {
     if (!canClockIn) {
       Alert.alert('No disponible', 'Ya has marcado tu entrada');
       return;
+    }
+
+    // Pre-check de jornada abierta: en kiosko usamos la RPC SECURITY DEFINER
+    // (no hay sesión Supabase). Corta el marcaje fantasma y da feedback inmediato
+    // en vez del rechazo silencioso post-sync. El destrabe en kiosko es vía admin
+    // (el flujo de "reportar salida faltante" requiere sesión normal).
+    const tenantId = useAuthStore.getState().tenantId;
+    if (kioskUser?.cedula && tenantId) {
+      setIsProcessing(true);
+      try {
+        const open = await attendanceService.getOpenJourneyFromCloud(
+          kioskUser.cedula,
+          tenantId
+        );
+        if (open) {
+          const tiempoStr =
+            open.horasAbierta < 1 ? 'menos de 1 h' : `${Math.floor(open.horasAbierta)} h`;
+          Alert.alert(
+            'Tenés una jornada abierta',
+            `Tu última entrada quedó sin cerrar (${formatFechaCorta(open.fecha)} a las ${decimalToAmPm(open.horaInicio)}, lleva ${tiempoStr}). Contactá a tu administrador para que la cierre y puedas marcar una nueva entrada.`,
+            [{ text: 'Entendido' }]
+          );
+          return;
+        }
+      } finally {
+        setIsProcessing(false);
+      }
     }
 
     setSelectedType('clock_in');
