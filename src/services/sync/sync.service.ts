@@ -474,6 +474,16 @@ export const syncService = {
         await attendanceRecordService.delete(record.id);
       } catch (delErr) {
         console.error('[SyncService] Failed to delete open-journey record:', delErr);
+        // Fallback: si no pudimos borrar, lo marcamos huérfano permanente
+        // (attempts=999) para que NO vuelva a getPendingSync — si no, quedaría
+        // en 'syncing' y el batch lo reprocesaría en bucle cada 30s (rechazo +
+        // alert repetido). markAsOrphan además lo hace visible en getStuckRecords
+        // para recuperación manual desde DataManagement.
+        try {
+          await attendanceRecordService.markAsOrphan(record.id);
+        } catch (orphanErr) {
+          console.error('[SyncService] Fallback markAsOrphan also failed:', orphanErr);
+        }
       }
       return {
         success: false,

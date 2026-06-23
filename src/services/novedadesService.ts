@@ -341,6 +341,28 @@ class NovedadesService {
 			const { cedula, empleado: empleadoNombre } = profileResult;
 			const tenantId = obtenerTenantIdRequerido();
 
+			// No se puede reportar un marcaje faltante en una semana cuyo cierre ya
+			// fue publicado (mismo invariante que crearAjusteMarcaje): al aprobar se
+			// insertaría un marcaje en una semana bloqueada.
+			const semanaInicioStr = format(
+				startOfWeek(parseISO(data.fecha), { weekStartsOn: 1 }),
+				"yyyy-MM-dd",
+			);
+			const { data: cierre } = await supabase
+				.from("cierres_semanales")
+				.select("estado")
+				.eq("cedula", cedula)
+				.eq("semana_inicio", semanaInicioStr)
+				.eq("estado", "publicado")
+				.maybeSingle();
+			if (cierre) {
+				return {
+					success: false,
+					error:
+						"No puedes reportar marcajes de esta semana porque el cierre semanal ya está publicado.",
+				};
+			}
+
 			const novedadData = {
 				user_id: user.id,
 				cedula,

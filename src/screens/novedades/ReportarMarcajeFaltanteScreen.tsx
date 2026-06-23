@@ -10,7 +10,6 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TextInput,
   Alert,
   KeyboardAvoidingView,
@@ -29,16 +28,11 @@ import {
 } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import {
-  COLORS,
-  FONT_SIZES,
-  FONT_WEIGHTS,
-  SPACING,
-  BORDER_RADIUS,
-} from '@constants/theme';
+import { COLORS } from '@constants/theme';
 import { Button } from '@components/ui/Button';
 import type { RootStackParamList } from '@/types/navigation.types';
 import novedadesService from '@services/novedadesService';
+import { styles } from './ReportarMarcajeFaltanteScreen.styles';
 
 type ReportarMarcajeFaltanteRouteProp = RouteProp<
   RootStackParamList,
@@ -129,6 +123,19 @@ export const ReportarMarcajeFaltanteScreen: React.FC = () => {
       Alert.alert(
         'Motivo requerido',
         'Por favor describe el motivo del marcaje faltante (mínimo 10 caracteres).'
+      );
+      return;
+    }
+
+    // No permitir un marcaje en el futuro: la validación de fecha<=hoy no alcanza
+    // si el día es hoy y la hora elegida todavía no ocurrió (ej. son las 10:00 y
+    // se selecciona salida 23:59). Combinamos fecha + hora y comparamos con ahora.
+    const fechaHora = new Date(fecha);
+    fechaHora.setHours(hora.getHours(), hora.getMinutes(), 0, 0);
+    if (fechaHora.getTime() > Date.now()) {
+      Alert.alert(
+        'Hora inválida',
+        'El marcaje no puede quedar en el futuro. Revisá la fecha y la hora.'
       );
       return;
     }
@@ -310,96 +317,5 @@ export const ReportarMarcajeFaltanteScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: SPACING.lg,
-  },
-  section: {
-    marginBottom: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  required: {
-    color: COLORS.error,
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  typeOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-  },
-  typeOptionSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  typeOptionText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.text,
-  },
-  typeOptionTextSelected: {
-    color: COLORS.textInverse,
-  },
-  selector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    gap: SPACING.md,
-  },
-  selectorText: {
-    flex: 1,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: COLORS.primary,
-    textTransform: 'capitalize',
-  },
-  textInput: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    minHeight: 120,
-  },
-  charCount: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    textAlign: 'right',
-    marginTop: SPACING.xs,
-  },
-  footer: {
-    padding: SPACING.lg,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-});
 
 export default ReportarMarcajeFaltanteScreen;

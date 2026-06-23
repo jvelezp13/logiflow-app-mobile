@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -251,39 +250,14 @@ export const HistoryScreen: React.FC = () => {
 
       {/* FAB: reportar un marcaje que nunca se registró (olvido total de entrada/salida) */}
       <TouchableOpacity
-        style={fabStyles.fab}
+        style={styles.fab}
         onPress={() => navigation.navigate('ReportarMarcajeFaltante')}
         activeOpacity={0.85}
         accessibilityLabel="Reportar marcaje faltante"
       >
         <MaterialCommunityIcons name="clock-plus-outline" size={22} color={COLORS.textInverse} />
-        <Text style={fabStyles.fabText}>Marcaje faltante</Text>
+        <Text style={styles.fabText}>Marcaje faltante</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
 };
-
-const fabStyles = StyleSheet.create({
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  fabText: {
-    color: COLORS.textInverse,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-});
