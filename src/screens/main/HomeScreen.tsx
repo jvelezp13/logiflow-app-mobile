@@ -16,6 +16,9 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/types/navigation.types';
 import { useAuth } from '@hooks/useAuth';
 import { useLocation } from '@hooks/useLocation';
 import { checkNetworkStatus } from '@hooks/useNetworkStatus';
@@ -108,6 +111,7 @@ const clockStyles = StyleSheet.create({
 });
 
 export const HomeScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, userFullName } = useAuth();
   const {
     getCurrentLocation,
@@ -169,8 +173,17 @@ export const HomeScreen: React.FC = () => {
     const handleOpenJourneyRejected = () => {
       Alert.alert(
         'No se pudo registrar tu entrada',
-        'Tenés una jornada abierta sin cerrar de un día anterior. Contactá a tu administrador para que la cierre y puedas marcar una nueva entrada.',
-        [{ text: 'Entendido' }]
+        'Tenés una jornada abierta sin cerrar de un día anterior. Reportá la salida que olvidaste marcar para destrabar tu jornada, o contactá a tu administrador.',
+        [
+          { text: 'Ahora no', style: 'cancel' },
+          {
+            text: 'Reportar salida faltante',
+            onPress: () =>
+              navigation.navigate('ReportarMarcajeFaltante', {
+                tipoSugerido: 'clock_out',
+              }),
+          },
+        ]
       );
     };
     syncEvents.on(SYNC_EVENTS.OPEN_JOURNEY_REJECTED, handleOpenJourneyRejected);
@@ -339,8 +352,18 @@ export const HomeScreen: React.FC = () => {
           const tiempoStr = open.horasAbierta < 1 ? 'menos de 1 h' : `${Math.floor(open.horasAbierta)} h`;
           Alert.alert(
             'Tenés una jornada abierta',
-            `Tu última entrada quedó sin cerrar (${formatFechaCorta(open.fecha)} a las ${decimalToAmPm(open.horaInicio)}, lleva ${tiempoStr}). Contactá a tu administrador para que cierre esa jornada y puedas marcar una nueva entrada.`,
-            [{ text: 'Entendido' }]
+            `Tu última entrada quedó sin cerrar (${formatFechaCorta(open.fecha)} a las ${decimalToAmPm(open.horaInicio)}, lleva ${tiempoStr}). Reportá la salida que olvidaste marcar ese día para destrabar tu jornada, o contactá a tu administrador.`,
+            [
+              { text: 'Ahora no', style: 'cancel' },
+              {
+                text: 'Reportar salida faltante',
+                onPress: () =>
+                  navigation.navigate('ReportarMarcajeFaltante', {
+                    tipoSugerido: 'clock_out',
+                    fechaSugerida: open.fecha,
+                  }),
+              },
+            ]
           );
           return;
         }

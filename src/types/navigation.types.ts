@@ -24,6 +24,11 @@ export type RootStackParamList = {
     tipo: 'clock_in' | 'clock_out';
     horaActual: string;
   };
+  // Reportar un marcaje que nunca existió (olvido total de entrada/salida).
+  // Params opcionales para pre-llenar el form desde el flujo de jornada abierta.
+  ReportarMarcajeFaltante:
+    | { tipoSugerido?: 'clock_in' | 'clock_out'; fechaSugerida?: string }
+    | undefined;
   DetalleNovedad: { novedadId: string };
 };
 

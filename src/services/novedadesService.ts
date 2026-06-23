@@ -18,7 +18,10 @@ export interface NovedadData {
 	longitud?: number;
 }
 
-export type TipoNovedad = "ajuste_marcaje" | "exceso_tope_diario";
+export type TipoNovedad =
+	| "ajuste_marcaje"
+	| "exceso_tope_diario"
+	| "marcaje_faltante";
 
 export type AjusteEstado = "pendiente" | "aprobada" | "rechazada";
 export type EstadoNovedad = AjusteEstado;
@@ -39,6 +42,8 @@ export interface Novedad {
 	marcaje_id: number | null;
 	hora_nueva: string | null;
 	hora_real: string | null;
+	// Solo para tipo_novedad='marcaje_faltante': qué marca falta crear.
+	tipo_marcaje: "clock_in" | "clock_out" | null;
 	estado: EstadoNovedad;
 	revisado_por: string | null;
 	fecha_revision: string | null;
@@ -58,6 +63,16 @@ export interface AjusteMarcajeData {
 	motivo: string;
 }
 
+export interface MarcajeFaltanteData {
+	/** Día del marcaje olvidado (YYYY-MM-DD, debe ser <= hoy) */
+	fecha: string;
+	/** Qué marca falta: entrada o salida */
+	tipo_marcaje: "clock_in" | "clock_out";
+	/** Hora propuesta (HH:MM) */
+	hora_nueva: string;
+	motivo: string;
+}
+
 export interface AjusteMarcajeResult {
 	success: boolean;
 	novedad?: Novedad;
@@ -67,6 +82,7 @@ export interface AjusteMarcajeResult {
 export const TIPOS_NOVEDAD_LABELS: Record<TipoNovedad, string> = {
 	ajuste_marcaje: "Ajuste de marcaje",
 	exceso_tope_diario: "Exceso de tope diario",
+	marcaje_faltante: "Marcaje faltante",
 };
 
 /**
@@ -271,6 +287,105 @@ class NovedadesService {
 	}
 
 	/**
+	 * Crea una solicitud de "marcaje faltante": un marcaje (entrada o salida) que el
+	 * empleado olvidó registrar por completo y que por lo tanto NO existe en
+	 * horarios_registros_diarios. A diferencia de ajuste_marcaje (que edita un marcaje
+	 * existente vía marcaje_id), acá el admin INSERTA el marcaje al aprobar.
+	 *
+	 * Contrato backend (CHECK constraints en horarios_novedades):
+	 *   - tipo_marcaje y hora_nueva obligatorios; marcaje_id y hora_real van NULL
+	 *   - motivo entre 10 y 500 caracteres; fecha <= hoy
+	 * Validamos en cliente para dar mensajes claros antes de pegarle a la DB.
+	 */
+	async crearMarcajeFaltante(
+		data: MarcajeFaltanteData,
+	): Promise<AjusteMarcajeResult> {
+		try {
+			if (
+				data.tipo_marcaje !== "clock_in" &&
+				data.tipo_marcaje !== "clock_out"
+			) {
+				return { success: false, error: "Tipo de marcaje inválido" };
+			}
+			if (!data.hora_nueva) {
+				return { success: false, error: "La hora del marcaje es obligatoria" };
+			}
+			const motivo = data.motivo.trim();
+			if (motivo.length < 10 || motivo.length > 500) {
+				return {
+					success: false,
+					error: "El motivo debe tener entre 10 y 500 caracteres",
+				};
+			}
+			// Comparación lexicográfica válida sobre el formato YYYY-MM-DD.
+			const hoy = format(new Date(), "yyyy-MM-dd");
+			if (data.fecha > hoy) {
+				return { success: false, error: "La fecha no puede ser futura" };
+			}
+
+			const {
+				data: { user },
+				error: authError,
+			} = await supabase.auth.getUser();
+			if (authError || !user) {
+				return { success: false, error: "Usuario no autenticado" };
+			}
+
+			const profileResult = await loadEmpleadoProfile(user.id);
+			if (!profileResult) {
+				return {
+					success: false,
+					error: "No se pudo obtener información del perfil",
+				};
+			}
+			const { cedula, empleado: empleadoNombre } = profileResult;
+			const tenantId = obtenerTenantIdRequerido();
+
+			const novedadData = {
+				user_id: user.id,
+				cedula,
+				empleado: empleadoNombre,
+				fecha: data.fecha,
+				tipo_novedad: "marcaje_faltante" as TipoNovedad,
+				tipo_marcaje: data.tipo_marcaje,
+				hora_nueva: data.hora_nueva,
+				hora_real: null,
+				marcaje_id: null,
+				motivo,
+				estado: "pendiente" as EstadoNovedad,
+				tenant_id: tenantId,
+			};
+
+			const { data: novedad, error } = await supabase
+				.from("horarios_novedades")
+				.insert(novedadData as never)
+				.select()
+				.single();
+
+			if (error) {
+				console.error("Error creando marcaje faltante:", error);
+				// 23505 = unique_violation: ya hay una solicitud pendiente equivalente.
+				if (error.code === "23505") {
+					return {
+						success: false,
+						error:
+							"Ya tenés una solicitud pendiente para ese marcaje. Esperá a que tu supervisor la revise.",
+					};
+				}
+				return { success: false, error: "Error al crear la solicitud" };
+			}
+
+			return { success: true, novedad: novedad as Novedad };
+		} catch (error) {
+			console.error("Error en crearMarcajeFaltante:", error);
+			return {
+				success: false,
+				error: "Error inesperado al crear la solicitud",
+			};
+		}
+	}
+
+	/**
 	 * Crea una nueva novedad genérica (usado por el FAB de Solicitudes).
 	 * No incluye marcaje_id ni horas; solo fecha + tipo + motivo + ubicación opcional.
 	 */
@@ -339,7 +454,7 @@ class NovedadesService {
 				.from("horarios_novedades")
 				.select("*")
 				.eq("user_id", user.id)
-				.eq("tipo_novedad", "ajuste_marcaje")
+				.in("tipo_novedad", ["ajuste_marcaje", "marcaje_faltante"])
 				.order("created_at", { ascending: false });
 
 			if (filtroEstado) {
@@ -403,7 +518,7 @@ class NovedadesService {
 				.from("horarios_novedades")
 				.select("estado")
 				.eq("user_id", user.id)
-				.eq("tipo_novedad", "ajuste_marcaje");
+				.in("tipo_novedad", ["ajuste_marcaje", "marcaje_faltante"]);
 
 			if (error) {
 				console.error("Error obteniendo estadísticas:", error);
@@ -439,7 +554,11 @@ class NovedadesService {
 				},
 				(payload) => {
 					const nuevaNovedad = payload.new as Novedad;
-					if (nuevaNovedad.tipo_novedad !== "ajuste_marcaje") return;
+					if (
+						nuevaNovedad.tipo_novedad !== "ajuste_marcaje" &&
+						nuevaNovedad.tipo_novedad !== "marcaje_faltante"
+					)
+						return;
 					callback(nuevaNovedad);
 				},
 			)
