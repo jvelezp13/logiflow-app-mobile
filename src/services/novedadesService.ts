@@ -1,7 +1,7 @@
 import { supabase } from "./supabase/client";
 import * as Location from "expo-location";
 import { obtenerTenantIdRequerido } from "../utils/tenant.utils";
-import { startOfWeek, format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
 // =====================================================
 // TIPOS
@@ -144,7 +144,6 @@ class NovedadesService {
 	/**
 	 * Crea una solicitud de ajuste de marcaje
 	 * Si no se proporciona marcaje_id, busca el marcaje por timestamp_local
-	 * Valida que la semana no tenga un cierre semanal publicado
 	 */
 	async crearAjusteMarcaje(
 		data: AjusteMarcajeData,
@@ -191,25 +190,10 @@ class NovedadesService {
 				}
 			}
 
-			// Validaciones independientes en paralelo:
-			// - cierre semanal publicado bloquea el ajuste
-			// - ajuste aprobado existente bloquea (defensa en profundidad — HistoryScreen ya lo previene)
-			const fechaMarcaje = parseISO(data.fecha);
-			const semanaInicioStr = format(
-				startOfWeek(fechaMarcaje, { weekStartsOn: 1 }),
-				"yyyy-MM-dd",
-			);
-
-			const cierreQuery = supabase
-				.from("cierres_semanales")
-				.select("estado")
-				.eq("cedula", cedula)
-				.eq("semana_inicio", semanaInicioStr)
-				.eq("estado", "publicado")
-				.maybeSingle();
-
-			const ajusteAprobadoQuery = marcajeId
-				? supabase
+			// Defensa en profundidad: un ajuste ya aprobado bloquea otro sobre el
+			// mismo marcaje (HistoryScreen también lo previene en la UI).
+			const ajusteAprobadoResult = marcajeId
+				? await supabase
 						.from("horarios_novedades")
 						.select("id")
 						.eq("marcaje_id", marcajeId)
@@ -217,20 +201,7 @@ class NovedadesService {
 						.eq("estado", "aprobada")
 						.is("deleted_at", null)
 						.maybeSingle()
-				: Promise.resolve({ data: null });
-
-			const [cierreResult, ajusteAprobadoResult] = await Promise.all([
-				cierreQuery,
-				ajusteAprobadoQuery,
-			]);
-
-			if (cierreResult.data) {
-				return {
-					success: false,
-					error:
-						"No puedes solicitar ajustes para esta semana porque el cierre semanal ya está publicado.",
-				};
-			}
+				: { data: null };
 
 			if (ajusteAprobadoResult.data) {
 				return {
@@ -340,28 +311,6 @@ class NovedadesService {
 			}
 			const { cedula, empleado: empleadoNombre } = profileResult;
 			const tenantId = obtenerTenantIdRequerido();
-
-			// No se puede reportar un marcaje faltante en una semana cuyo cierre ya
-			// fue publicado (mismo invariante que crearAjusteMarcaje): al aprobar se
-			// insertaría un marcaje en una semana bloqueada.
-			const semanaInicioStr = format(
-				startOfWeek(parseISO(data.fecha), { weekStartsOn: 1 }),
-				"yyyy-MM-dd",
-			);
-			const { data: cierre } = await supabase
-				.from("cierres_semanales")
-				.select("estado")
-				.eq("cedula", cedula)
-				.eq("semana_inicio", semanaInicioStr)
-				.eq("estado", "publicado")
-				.maybeSingle();
-			if (cierre) {
-				return {
-					success: false,
-					error:
-						"No puedes reportar marcajes de esta semana porque el cierre semanal ya está publicado.",
-				};
-			}
 
 			// Evita solicitudes duplicadas: como marcaje_faltante va con marcaje_id NULL,
 			// los UNIQUE INDEX por marcaje_id no aplican. Sin este chequeo, un empleado
