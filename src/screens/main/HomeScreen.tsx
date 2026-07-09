@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Modal,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -132,6 +133,10 @@ export const HomeScreen: React.FC = () => {
   const [hasBlockingPendingOut, setHasBlockingPendingOut] = useState(false);
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  // Marcajes que "necesitan atención": sin subir hace rato o esperando re-login.
+  const [attentionCount, setAttentionCount] = useState(0);
+  const [attentionIsAuth, setAttentionIsAuth] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); // Processing attendance record
@@ -244,13 +249,14 @@ export const HomeScreen: React.FC = () => {
 
       // 2. Consultar por CÉDULA (no userId) para detectar marcajes de cualquier dispositivo
       // + chequeo de pending local con timeout (evita bloqueo perpetuo)
-      const [canIn, canOut, records, syncCount, pendingIn, pendingOut] = await Promise.all([
+      const [canIn, canOut, records, syncCount, pendingIn, pendingOut, attentionRecords] = await Promise.all([
         attendanceService.canClockInByCedula(user.cedula),
         attendanceService.canClockOutByCedula(user.cedula),
         attendanceService.getTodayRecordsByCedula(user.cedula),
         attendanceService.getPendingSyncCount(),
         attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_in'),
         attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_out'),
+        attendanceRecordService.getRecordsNeedingAttention(),
       ]);
 
       console.log('[HomeScreen] Data loaded:', {
@@ -276,12 +282,39 @@ export const HomeScreen: React.FC = () => {
       setHasBlockingPendingOut(pendingOut);
       setTodayRecords(records);
       setPendingSyncCount(syncCount);
+      setAttentionCount(attentionRecords.length);
+      setAttentionIsAuth(
+        attentionRecords.some((r) => (r.syncError || '').startsWith('WAITING_AUTH'))
+      );
 
       console.log('[HomeScreen] State updated with records:', records.length);
     } catch (error) {
       console.error('[HomeScreen] Load data error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Reintento manual desde el banner de atención: recupera terminales atascados
+   * y fuerza un ciclo de sync. Para el caso "esperando sesión", el sync resolverá
+   * apenas el empleado vuelva a loguear; igual reintentamos por si ya hay sesión.
+   */
+  const handleRetrySync = async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      // Destrabar AMBOS: terminales (reset attempts) y los que están descansando
+      // en un escalón de backoff (limpiar next_retry_at), para que el reintento
+      // manual sea efectivo también para el caso viejo-pero-no-terminal.
+      await attendanceRecordService.recoverStuckRecords();
+      await attendanceRecordService.resetBackoffForRetry();
+      await syncService.syncPendingRecords();
+      await loadData();
+    } catch (error) {
+      console.warn('[HomeScreen] Retry sync failed:', error);
+    } finally {
+      setIsRetrying(false);
     }
   };
 
@@ -528,11 +561,30 @@ export const HomeScreen: React.FC = () => {
         onRequestPermission={requestPermission}
       />
 
-      {/* Sync Badge — debajo del banner para que no se tapen */}
-      {pendingSyncCount > 0 && (
-        <View style={styles.syncBadge}>
-          <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
-        </View>
+      {/* Banner de atención: un marcaje lleva rato sin subir o espera re-login.
+          Tiene prioridad sobre el badge tranquilo de "pendientes". */}
+      {attentionCount > 0 ? (
+        <TouchableOpacity
+          style={styles.attentionBanner}
+          onPress={handleRetrySync}
+          disabled={isRetrying}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.attentionBannerTitle}>
+            {attentionIsAuth
+              ? 'Volvé a iniciar sesión para subir tus marcajes'
+              : `${attentionCount} marcaje${attentionCount > 1 ? 's' : ''} sin sincronizar`}
+          </Text>
+          <Text style={styles.attentionBannerAction}>
+            {isRetrying ? 'Reintentando…' : 'Tocá para reintentar'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        pendingSyncCount > 0 && (
+          <View style={styles.syncBadge}>
+            <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
+          </View>
+        )
       )}
 
       <ScrollView

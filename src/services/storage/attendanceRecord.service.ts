@@ -35,8 +35,43 @@ export type UpdateAttendanceRecordData = Partial<{
   syncStatus: AttendanceSyncStatus;
   syncError: string;
   syncAttempts: number;
+  nextRetryAt: number;
   syncedAt: number;
 }>;
+
+/**
+ * Escalera de backoff para reintentos de sync. Índice = (intentos - 1), con tope
+ * en el último valor. Evita quemar todos los reintentos en minutos y deja que un
+ * error transitorio se resuelva solo cuando mejoran las condiciones.
+ */
+const RETRY_BACKOFF_MS = [
+  30 * 1000,          // intento 1 → 30s
+  2 * 60 * 1000,      // intento 2 → 2min
+  10 * 60 * 1000,     // intento 3 → 10min
+  30 * 60 * 1000,     // intento 4 → 30min
+  60 * 60 * 1000,     // intento 5 → 1h
+  3 * 60 * 60 * 1000, // intento 6+ → 3h (tope)
+];
+
+/**
+ * Sentinela de intentos para registros terminales: irrecuperables sin acción
+ * manual (p.ej. kiosko sin PIN guardado). Se excluyen del pipeline automático y
+ * se reportan como "atascados" para recuperación manual. El backoff normal nunca
+ * llega a este valor por acumulación (con tope de 3h tardaría años).
+ */
+const ORPHAN_ATTEMPTS = 999;
+
+/** Un marcaje sin subir pasa a "necesita atención" del empleado tras este tiempo. */
+const ATTENTION_AGE_MS = 60 * 60 * 1000; // 1h
+
+/** Descanso cuando falta sesión/credenciales (no penaliza intentos). */
+const WAITING_CREDENTIALS_DELAY_MS = 5 * 60 * 1000; // 5min
+
+/** Delay de backoff para el intento N (1-indexed, con tope). */
+function backoffDelayMs(attempts: number): number {
+  const idx = Math.min(Math.max(attempts, 1) - 1, RETRY_BACKOFF_MS.length - 1);
+  return RETRY_BACKOFF_MS[idx];
+}
 
 /**
  * Attendance Record Service
@@ -131,6 +166,7 @@ export const attendanceRecordService = {
           if (data.syncStatus !== undefined) rec.attendanceSyncStatus = data.syncStatus;
           if (data.syncError !== undefined) rec.syncError = data.syncError;
           if (data.syncAttempts !== undefined) rec.syncAttempts = data.syncAttempts;
+          if (data.nextRetryAt !== undefined) rec.nextRetryAt = data.nextRetryAt;
           if (data.syncedAt !== undefined) rec.syncedAt = data.syncedAt;
         });
       });
@@ -309,12 +345,15 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Get pending sync records
+   * Get pending sync records ELIGIBLES para procesar ahora.
    * OPTIMIZED: Query only pending/error/syncing records directly (no debug fetch)
-   * Excluye registros con demasiados intentos (huérfanos o fallidos permanentes)
+   * - Excluye terminales (attempts >= ORPHAN_ATTEMPTS): irrecuperables sin acción manual.
+   * - Respeta el backoff: solo trae registros cuyo next_retry_at ya venció
+   *   (o es null/0, p.ej. legacy o recién marcados pending).
    */
   async getPendingSync(): Promise<AttendanceRecord[]> {
     try {
+      const now = Date.now();
       const records = await database
         .get<AttendanceRecord>('attendance_records')
         .query(
@@ -324,7 +363,11 @@ export const attendanceRecordService = {
               Q.where('sync_status', 'error'),
               Q.where('sync_status', 'syncing')
             ),
-            Q.where('sync_attempts', Q.lt(10)) // Excluir registros huérfanos (>=10 intentos)
+            Q.where('sync_attempts', Q.lt(ORPHAN_ATTEMPTS)),
+            Q.or(
+              Q.where('next_retry_at', Q.lte(now)),
+              Q.where('next_retry_at', null) // legacy: sin backoff previo → elegible
+            )
           ),
           Q.sortBy('timestamp', Q.asc)
         )
@@ -364,6 +407,7 @@ export const attendanceRecordService = {
         syncStatus: 'synced',
         syncedAt: Date.now(),
         syncError: undefined,
+        nextRetryAt: 0, // limpiar backoff
         photoUrl,
         photoUploaded: !!photoUrl,
       });
@@ -374,20 +418,44 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Mark record as sync error
+   * Mark record as sync error, aplicando backoff exponencial.
+   * El registro NO se abandona: sigue en cola y se reintentará cuando venza
+   * next_retry_at. Solo los terminales (markAsOrphan, attempts=999) salen del loop.
    */
   async markAsSyncError(recordId: string, errorMessage: string): Promise<void> {
     try {
       const record = await this.getById(recordId);
       if (!record) return;
 
+      const attempts = record.syncAttempts + 1;
       await this.update(recordId, {
         syncStatus: 'error',
         syncError: errorMessage,
-        syncAttempts: record.syncAttempts + 1,
+        syncAttempts: attempts,
+        nextRetryAt: Date.now() + backoffDelayMs(attempts),
       });
     } catch (error) {
       console.error('[AttendanceRecordService] Mark as sync error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Marca un registro que no pudo sincronizar por falta de credenciales
+   * (modo normal sin sesión Supabase activa). A diferencia de markAsOrphan, esto
+   * es RECUPERABLE: cuando el empleado vuelve a iniciar sesión, sube. No penaliza
+   * intentos; solo aplica un descanso corto para no reprocesar en bucle cada 30s.
+   */
+  async markAsWaitingCredentials(recordId: string): Promise<void> {
+    try {
+      await this.update(recordId, {
+        syncStatus: 'pending',
+        syncError: 'WAITING_AUTH: esperando sesión para sincronizar',
+        nextRetryAt: Date.now() + WAITING_CREDENTIALS_DELAY_MS,
+      });
+      console.log('[AttendanceRecordService] Registro esperando credenciales:', recordId);
+    } catch (error) {
+      console.error('[AttendanceRecordService] Mark as waiting credentials error:', error);
       throw error;
     }
   },
@@ -445,7 +513,7 @@ export const attendanceRecordService = {
             Q.where('user_cedula', userCedula),
             Q.where('attendance_type', type),
             Q.where('timestamp', Q.gte(cutoff)),
-            Q.where('sync_attempts', Q.lt(10)),
+            Q.where('sync_attempts', Q.lt(ORPHAN_ATTEMPTS)),
             Q.or(
               Q.where('sync_status', 'pending'),
               Q.where('sync_status', 'syncing'),
@@ -462,9 +530,9 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Cuenta los registros que el sync automatico aun procesa (attempts < 10).
-   * Debe coincidir con el criterio de getPendingSync para que el badge "X pendientes"
-   * no muestre huerfanos invisibles al pipeline.
+   * Cuenta los registros no sincronizados que el pipeline aun procesara
+   * (no terminales). Incluye los que estan "descansando" por backoff, porque
+   * siguen pendientes de subir — el badge "X pendientes" debe ser honesto.
    */
   async getPendingSyncCount(): Promise<number> {
     try {
@@ -477,7 +545,7 @@ export const attendanceRecordService = {
               Q.where('sync_status', 'error'),
               Q.where('sync_status', 'syncing')
             ),
-            Q.where('sync_attempts', Q.lt(10))
+            Q.where('sync_attempts', Q.lt(ORPHAN_ATTEMPTS))
           )
         )
         .fetchCount();
@@ -489,8 +557,8 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Cuenta los registros huerfanos (attempts >= 10) que el sync automatico
-   * descarto. Necesitan recuperacion manual via recoverStuckRecords().
+   * Cuenta los registros terminales (attempts >= ORPHAN_ATTEMPTS) que el pipeline
+   * automatico descarto. Necesitan recuperacion manual via recoverStuckRecords().
    */
   async getStuckRecordsCount(): Promise<number> {
     try {
@@ -503,7 +571,7 @@ export const attendanceRecordService = {
               Q.where('sync_status', 'error'),
               Q.where('sync_status', 'syncing')
             ),
-            Q.where('sync_attempts', Q.gte(10))
+            Q.where('sync_attempts', Q.gte(ORPHAN_ATTEMPTS))
           )
         )
         .fetchCount();
@@ -515,7 +583,7 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Trae los huerfanos (attempts >= 10) para reporting/recuperacion.
+   * Trae los terminales (attempts >= ORPHAN_ATTEMPTS) para reporting/recuperacion.
    */
   async getStuckRecords(): Promise<AttendanceRecord[]> {
     try {
@@ -528,7 +596,7 @@ export const attendanceRecordService = {
               Q.where('sync_status', 'error'),
               Q.where('sync_status', 'syncing')
             ),
-            Q.where('sync_attempts', Q.gte(10))
+            Q.where('sync_attempts', Q.gte(ORPHAN_ATTEMPTS))
           ),
           Q.sortBy('timestamp', Q.asc)
         )
@@ -536,6 +604,38 @@ export const attendanceRecordService = {
       return records;
     } catch (error) {
       console.error('[AttendanceRecordService] Get stuck records error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Trae los marcajes que "necesitan atención" del empleado: no sincronizados y
+   * o bien viejos (> ATTENTION_AGE_MS sin subir) o bien terminales. Alimenta el
+   * banner accionable del Home (a diferencia del badge, que cuenta todo lo pendiente).
+   */
+  async getRecordsNeedingAttention(): Promise<AttendanceRecord[]> {
+    try {
+      const cutoff = Date.now() - ATTENTION_AGE_MS;
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.or(
+              Q.where('created_at', Q.lt(cutoff)),
+              Q.where('sync_attempts', Q.gte(ORPHAN_ATTEMPTS))
+            )
+          ),
+          Q.sortBy('timestamp', Q.asc)
+        )
+        .fetch();
+      return records;
+    } catch (error) {
+      console.error('[AttendanceRecordService] Get records needing attention error:', error);
       return [];
     }
   },
@@ -561,6 +661,7 @@ export const attendanceRecordService = {
               rec.attendanceSyncStatus = 'pending';
               rec.syncAttempts = 0;
               rec.syncError = undefined;
+              rec.nextRetryAt = 0; // elegible de inmediato
             })
           )
         );
@@ -569,6 +670,52 @@ export const attendanceRecordService = {
       return stuck.length;
     } catch (error) {
       console.error('[AttendanceRecordService] recoverStuckRecords error:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Fuerza la elegibilidad inmediata de los pendientes NO terminales que están
+   * "descansando" por backoff (limpia next_retry_at sin tocar attempts). Lo usa el
+   * botón "reintentar ahora" del banner para que un marcaje en medio de un escalón
+   * largo (1h/3h) o de la espera de credenciales se intente YA. No resetea attempts:
+   * si vuelve a fallar, el backoff sigue escalando desde donde iba.
+   * Devuelve la cantidad de registros destrabados.
+   */
+  async resetBackoffForRetry(): Promise<number> {
+    try {
+      const records = await database
+        .get<AttendanceRecord>('attendance_records')
+        .query(
+          Q.and(
+            Q.or(
+              Q.where('sync_status', 'pending'),
+              Q.where('sync_status', 'error'),
+              Q.where('sync_status', 'syncing')
+            ),
+            Q.where('sync_attempts', Q.lt(ORPHAN_ATTEMPTS)),
+            Q.where('next_retry_at', Q.gt(0)) // solo los que están descansando
+          )
+        )
+        .fetch();
+
+      if (records.length === 0) {
+        return 0;
+      }
+
+      await database.write(async () => {
+        await database.batch(
+          ...records.map((record) =>
+            record.prepareUpdate((rec) => {
+              rec.nextRetryAt = 0;
+            })
+          )
+        );
+      });
+
+      return records.length;
+    } catch (error) {
+      console.error('[AttendanceRecordService] resetBackoffForRetry error:', error);
       return 0;
     }
   },
@@ -601,6 +748,7 @@ export const attendanceRecordService = {
         syncStatus: 'pending',
         syncError: undefined,
         syncAttempts: 0,
+        nextRetryAt: 0, // limpiar backoff → elegible de inmediato
       });
       console.log('[AttendanceRecordService] Record marked as pending for re-sync:', recordId);
     } catch (error) {
@@ -953,8 +1101,8 @@ export const attendanceRecordService = {
   },
 
   /**
-   * Limpia registros huérfanos (sin credenciales válidas para sincronizar)
-   * Estos registros tienen sync_attempts >= 10 y no pueden recuperarse
+   * Limpia registros huérfanos terminales (sin credenciales válidas para
+   * sincronizar). Tienen sync_attempts >= ORPHAN_ATTEMPTS y no pueden recuperarse.
    */
   async cleanupOrphanedRecords(): Promise<number> {
     try {
@@ -962,7 +1110,7 @@ export const attendanceRecordService = {
         .get<AttendanceRecord>('attendance_records')
         .query(
           Q.where('sync_status', 'error'),
-          Q.where('sync_attempts', Q.gte(10))
+          Q.where('sync_attempts', Q.gte(ORPHAN_ATTEMPTS))
         )
         .fetch();
 

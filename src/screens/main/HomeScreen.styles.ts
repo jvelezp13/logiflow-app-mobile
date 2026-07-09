@@ -172,6 +172,26 @@ export const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
     color: COLORS.surface,
   },
+  attentionBanner: {
+    marginTop: SPACING.sm,
+    marginHorizontal: SPACING.md,
+    backgroundColor: COLORS.error,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  attentionBannerTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.surface,
+  },
+  attentionBannerAction: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: COLORS.surface,
+    marginTop: 2,
+    opacity: 0.9,
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: SPACING.xl,

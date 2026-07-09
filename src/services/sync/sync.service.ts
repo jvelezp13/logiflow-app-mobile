@@ -518,17 +518,20 @@ export const syncService = {
       const hasKioskPin = !!record.kioskPin;
 
       if (!hasActiveSession && !hasKioskPin) {
-        console.error('[SyncService] Registro huérfano: sin sesión ni PIN', {
+        // Registro de modo normal sin sesión Supabase activa. NO es huérfano:
+        // la sesión puede volver con un re-login, así que lo dejamos "esperando
+        // credenciales" (recuperable, sin penalizar intentos) en vez de matarlo.
+        console.warn('[SyncService] Registro esperando credenciales: sin sesión ni PIN', {
           recordId: record.id,
           date: record.date,
           time: record.time,
           syncAttempts: record.syncAttempts,
         });
-        await attendanceRecordService.markAsOrphan(record.id);
+        await attendanceRecordService.markAsWaitingCredentials(record.id);
         return {
           success: false,
           recordId: record.id,
-          error: 'ORPHAN: Sin credenciales válidas para sincronizar',
+          error: 'WAITING_AUTH: esperando sesión para sincronizar',
         };
       }
 
