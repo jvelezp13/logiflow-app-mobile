@@ -32,6 +32,8 @@ import { COLORS } from '@constants/theme';
 import { Button } from '@components/ui/Button';
 import type { RootStackParamList } from '@/types/navigation.types';
 import novedadesService from '@services/novedadesService';
+import { attendanceRecordService } from '@services/storage';
+import { triggerSync } from '@services/sync';
 import { styles } from './ReportarMarcajeFaltanteScreen.styles';
 
 type ReportarMarcajeFaltanteRouteProp = RouteProp<
@@ -154,6 +156,17 @@ export const ReportarMarcajeFaltanteScreen: React.FC = () => {
       });
 
       if (result.success) {
+        // Destrabar marcajes que quedaron trabados por esta jornada abierta: ya hay
+        // solicitud pendiente, así que el backend los aceptará al reintentar. Solo
+        // aplica a salidas faltantes (las que destraban una jornada abierta).
+        if (tipo === 'clock_out') {
+          try {
+            await attendanceRecordService.resetBackoffForRetry();
+            triggerSync();
+          } catch (unblockErr) {
+            console.warn('[ReportarMarcajeFaltante] No se pudo destrabar marcajes:', unblockErr);
+          }
+        }
         Alert.alert(
           'Solicitud enviada',
           'Tu solicitud de marcaje faltante ha sido enviada. Un administrador la revisará.',

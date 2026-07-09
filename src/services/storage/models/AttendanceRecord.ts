@@ -54,6 +54,7 @@ export class AttendanceRecord extends Model {
   @field('sync_status') attendanceSyncStatus!: AttendanceSyncStatus;
   @field('sync_error') syncError?: string;
   @field('sync_attempts') syncAttempts!: number;
+  @field('next_retry_at') nextRetryAt?: number; // Backoff: no reintentar antes de este timestamp
   @field('synced_at') syncedAt?: number;
 
   // Source tracking (for admin edits)

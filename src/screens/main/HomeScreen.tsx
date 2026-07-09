@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Modal,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -132,6 +133,14 @@ export const HomeScreen: React.FC = () => {
   const [hasBlockingPendingOut, setHasBlockingPendingOut] = useState(false);
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  // Marcajes que "necesitan atención": sin subir hace rato o esperando re-login.
+  const [attentionCount, setAttentionCount] = useState(0);
+  const [attentionIsAuth, setAttentionIsAuth] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  // clock_in preservado que el backend rechazó por jornada abierta anterior: NO es
+  // "Trabajando" (la entrada no llegó al servidor); bloquea marcar salida para no
+  // crear un clock_out huérfano, y ofrece reportar la salida faltante para destrabar.
+  const [blockedEntry, setBlockedEntry] = useState<AttendanceRecord | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); // Processing attendance record
@@ -170,7 +179,18 @@ export const HomeScreen: React.FC = () => {
   // seguridad para los casos en que el pre-check de handleClockIn no disparó
   // (versión vieja, fail-open por red lenta, o marcaje en kiosko).
   useEffect(() => {
-    const handleOpenJourneyRejected = () => {
+    const handleOpenJourneyRejected = async () => {
+      // Consultamos la fecha de la jornada abierta para precargar el reporte de
+      // salida faltante (el rechazo del sync no trae ese dato en el payload).
+      let fechaSugerida: string | undefined;
+      try {
+        if (user?.cedula) {
+          const open = await attendanceService.getOpenJourney(user.cedula);
+          fechaSugerida = open?.fecha;
+        }
+      } catch (e) {
+        console.warn('[HomeScreen] No se pudo obtener fecha de jornada abierta:', e);
+      }
       Alert.alert(
         'No se pudo registrar tu entrada',
         'Tenés una jornada abierta sin cerrar de un día anterior. Reportá la salida que olvidaste marcar para destrabar tu jornada, o contactá a tu administrador.',
@@ -181,6 +201,7 @@ export const HomeScreen: React.FC = () => {
             onPress: () =>
               navigation.navigate('ReportarMarcajeFaltante', {
                 tipoSugerido: 'clock_out',
+                fechaSugerida,
               }),
           },
         ]
@@ -190,7 +211,7 @@ export const HomeScreen: React.FC = () => {
     return () => {
       syncEvents.off(SYNC_EVENTS.OPEN_JOURNEY_REJECTED, handleOpenJourneyRejected);
     };
-  }, []);
+  }, [user?.cedula]);
 
   // roleConfig se usa para descontar minutosDescanso del total de horas del dia.
   const loadRoleConfig = async () => {
@@ -244,13 +265,14 @@ export const HomeScreen: React.FC = () => {
 
       // 2. Consultar por CÉDULA (no userId) para detectar marcajes de cualquier dispositivo
       // + chequeo de pending local con timeout (evita bloqueo perpetuo)
-      const [canIn, canOut, records, syncCount, pendingIn, pendingOut] = await Promise.all([
+      const [canIn, canOut, records, syncCount, pendingIn, pendingOut, attentionRecords] = await Promise.all([
         attendanceService.canClockInByCedula(user.cedula),
         attendanceService.canClockOutByCedula(user.cedula),
         attendanceService.getTodayRecordsByCedula(user.cedula),
         attendanceService.getPendingSyncCount(),
         attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_in'),
         attendanceRecordService.hasBlockingPendingByType(user.cedula, 'clock_out'),
+        attendanceRecordService.getRecordsNeedingAttention(),
       ]);
 
       console.log('[HomeScreen] Data loaded:', {
@@ -276,6 +298,20 @@ export const HomeScreen: React.FC = () => {
       setHasBlockingPendingOut(pendingOut);
       setTodayRecords(records);
       setPendingSyncCount(syncCount);
+      setAttentionCount(attentionRecords.length);
+      setAttentionIsAuth(
+        attentionRecords.some((r) => (r.syncError || '').startsWith('WAITING_AUTH'))
+      );
+      // Entrada de hoy trabada por jornada abierta (preservada offline, rechazada
+      // por el backend): no habilita "Trabajando" ni marcar salida.
+      setBlockedEntry(
+        records.find(
+          (r) =>
+            r.attendanceType === 'clock_in' &&
+            r.attendanceSyncStatus === 'error' &&
+            (r.syncError || '').startsWith('OPEN_JOURNEY')
+        ) || null
+      );
 
       console.log('[HomeScreen] State updated with records:', records.length);
     } catch (error) {
@@ -283,6 +319,50 @@ export const HomeScreen: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /**
+   * Reintento manual desde el banner de atención: recupera terminales atascados
+   * y fuerza un ciclo de sync. Para el caso "esperando sesión", el sync resolverá
+   * apenas el empleado vuelva a loguear; igual reintentamos por si ya hay sesión.
+   */
+  const handleRetrySync = async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      // Destrabar AMBOS: terminales (reset attempts) y los que están descansando
+      // en un escalón de backoff (limpiar next_retry_at), para que el reintento
+      // manual sea efectivo también para el caso viejo-pero-no-terminal.
+      await attendanceRecordService.recoverStuckRecords();
+      await attendanceRecordService.resetBackoffForRetry();
+      await syncService.syncPendingRecords();
+      await loadData();
+    } catch (error) {
+      console.warn('[HomeScreen] Retry sync failed:', error);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  /**
+   * Reportar salida faltante desde el estado "entrada trabada". Precarga la fecha
+   * de la jornada abierta para que, al crear la solicitud, se destrabe el marcaje
+   * preservado y suba con su hora real.
+   */
+  const handleReportFromBlocked = async () => {
+    let fechaSugerida: string | undefined;
+    try {
+      if (user?.cedula) {
+        const open = await attendanceService.getOpenJourney(user.cedula);
+        fechaSugerida = open?.fecha;
+      }
+    } catch (e) {
+      console.warn('[HomeScreen] No se pudo obtener fecha de jornada abierta:', e);
+    }
+    navigation.navigate('ReportarMarcajeFaltante', {
+      tipoSugerido: 'clock_out',
+      fechaSugerida,
+    });
   };
 
   /**
@@ -378,6 +458,13 @@ export const HomeScreen: React.FC = () => {
 
   const handleClockOut = () => {
     if (isProcessing) return;
+    if (blockedEntry) {
+      Alert.alert(
+        'Entrada sin registrar',
+        'Tu entrada está trabada por una jornada abierta de un día anterior. Reportá la salida faltante para destrabarla.'
+      );
+      return;
+    }
     if (hasBlockingPendingOut) {
       Alert.alert(
         'Sincronizando',
@@ -528,11 +615,30 @@ export const HomeScreen: React.FC = () => {
         onRequestPermission={requestPermission}
       />
 
-      {/* Sync Badge — debajo del banner para que no se tapen */}
-      {pendingSyncCount > 0 && (
-        <View style={styles.syncBadge}>
-          <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
-        </View>
+      {/* Banner de atención: un marcaje lleva rato sin subir o espera re-login.
+          Tiene prioridad sobre el badge tranquilo de "pendientes". */}
+      {attentionCount > 0 ? (
+        <TouchableOpacity
+          style={styles.attentionBanner}
+          onPress={handleRetrySync}
+          disabled={isRetrying}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.attentionBannerTitle}>
+            {attentionIsAuth
+              ? 'Volvé a iniciar sesión para subir tus marcajes'
+              : `${attentionCount} marcaje${attentionCount > 1 ? 's' : ''} sin sincronizar`}
+          </Text>
+          <Text style={styles.attentionBannerAction}>
+            {isRetrying ? 'Reintentando…' : 'Tocá para reintentar'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        pendingSyncCount > 0 && (
+          <View style={styles.syncBadge}>
+            <Text style={styles.syncBadgeText}>{pendingSyncCount} pendientes</Text>
+          </View>
+        )
       )}
 
       <ScrollView
@@ -592,46 +698,72 @@ export const HomeScreen: React.FC = () => {
 
           {/* Estado Banner - Feedback visual claro */}
           {!isLoading && (
-            <View style={[
-              styles.statusBanner,
-              canClockOut ? styles.statusBannerWorking : styles.statusBannerIdle
-            ]}>
-              <Text style={[
-                styles.statusBannerIcon,
-                canClockOut ? styles.statusBannerIconWorking : styles.statusBannerIconIdle
-              ]}>
-                {canClockOut ? '⏱️' : '☀️'}
-              </Text>
-              <View style={styles.statusBannerTextContainer}>
-                <Text style={[
-                  styles.statusBannerTitle,
-                  canClockOut ? styles.statusBannerTitleWorking : styles.statusBannerTitleIdle
-                ]}>
-                  {canClockOut ? 'Trabajando' : 'Listo para iniciar'}
-                </Text>
-                {canClockOut && todayRecords.length > 0 && (() => {
-                  // Buscar la ultima entrada
-                  const lastClockIn = [...todayRecords]
-                    .filter(r => r.attendanceType === 'clock_in')
-                    .sort((a, b) => b.timestamp - a.timestamp)[0];
-                  return lastClockIn ? (
-                    <Text style={styles.statusBannerSubtitle}>
-                      Desde las {lastClockIn.formattedTime}
-                    </Text>
-                  ) : null;
-                })()}
-                {!canClockOut && !canClockIn && (
-                  <Text style={styles.statusBannerSubtitle}>
-                    Jornada completada
+            blockedEntry ? (
+              <View style={[styles.statusBanner, styles.statusBannerBlocked]}>
+                <Text style={styles.statusBannerIcon}>⚠️</Text>
+                <View style={styles.statusBannerTextContainer}>
+                  <Text style={[styles.statusBannerTitle, styles.statusBannerTitleBlocked]}>
+                    Entrada sin registrar
                   </Text>
-                )}
+                  <Text style={styles.statusBannerSubtitle}>
+                    Tu entrada de las {blockedEntry.formattedTime} está trabada por una
+                    jornada abierta de un día anterior. Reportá la salida que olvidaste
+                    marcar para destrabarla.
+                  </Text>
+                </View>
               </View>
-            </View>
+            ) : (
+              <View style={[
+                styles.statusBanner,
+                canClockOut ? styles.statusBannerWorking : styles.statusBannerIdle
+              ]}>
+                <Text style={[
+                  styles.statusBannerIcon,
+                  canClockOut ? styles.statusBannerIconWorking : styles.statusBannerIconIdle
+                ]}>
+                  {canClockOut ? '⏱️' : '☀️'}
+                </Text>
+                <View style={styles.statusBannerTextContainer}>
+                  <Text style={[
+                    styles.statusBannerTitle,
+                    canClockOut ? styles.statusBannerTitleWorking : styles.statusBannerTitleIdle
+                  ]}>
+                    {canClockOut ? 'Trabajando' : 'Listo para iniciar'}
+                  </Text>
+                  {canClockOut && todayRecords.length > 0 && (() => {
+                    // Buscar la ultima entrada
+                    const lastClockIn = [...todayRecords]
+                      .filter(r => r.attendanceType === 'clock_in')
+                      .sort((a, b) => b.timestamp - a.timestamp)[0];
+                    return lastClockIn ? (
+                      <Text style={styles.statusBannerSubtitle}>
+                        Desde las {lastClockIn.formattedTime}
+                      </Text>
+                    ) : null;
+                  })()}
+                  {!canClockOut && !canClockIn && (
+                    <Text style={styles.statusBannerSubtitle}>
+                      Jornada completada
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )
           )}
 
           {/* Boton principal - Solo el relevante */}
           {isLoading ? (
             <ActivityIndicator size="large" />
+          ) : blockedEntry ? (
+            <View style={styles.buttonsContainer}>
+              <Button
+                title="Reportar salida faltante"
+                onPress={handleReportFromBlocked}
+                disabled={isProcessing}
+                variant="clockIn"
+                style={styles.clockButtonMain}
+              />
+            </View>
           ) : (
             <View style={styles.buttonsContainer}>
               {canClockIn && (

@@ -56,8 +56,9 @@ export const SYNC_EVENTS = {
   SYNC_COMPLETED: 'sync_completed',
   // Emitido cuando el backend rechazo un marcaje porque el empleado tiene una
   // jornada abierta sin cerrar (constraint fn_prevent_jornada_duplicada). El
-  // registro local YA fue borrado en el sync; los listeners (HomeScreen) solo
-  // avisan al empleado para que contacte al administrador.
+  // registro local se PRESERVA (queda con backoff, visible en el banner de
+  // atención); los listeners (HomeScreen) avisan al empleado y lo llevan a
+  // reportar la salida faltante para destrabar y que el marcaje suba con su hora real.
   OPEN_JOURNEY_REJECTED: 'open_journey_rejected',
 } as const;
 

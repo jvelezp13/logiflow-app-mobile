@@ -45,5 +45,17 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // Migration from v4 to v5: Add next_retry_at for exponential backoff
+    {
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: 'attendance_records',
+          columns: [
+            { name: 'next_retry_at', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

@@ -7,13 +7,14 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 /**
- * Database schema version 4
+ * Database schema version 5
  * v2: Added kiosk_pin field for kiosk mode uploads
  * v3: Added fuente and remote_updated_at fields for admin edit tracking
  * v4: Added tenant_id for multi-tenant support
+ * v5: Added next_retry_at for exponential backoff on sync retries
  */
 export const schema = appSchema({
-  version: 4,
+  version: 5,
   tables: [
     /**
      * Attendance Records Table
@@ -41,6 +42,7 @@ export const schema = appSchema({
         { name: 'sync_status', type: 'string' }, // 'pending' | 'syncing' | 'synced' | 'error'
         { name: 'sync_error', type: 'string', isOptional: true },
         { name: 'sync_attempts', type: 'number' },
+        { name: 'next_retry_at', type: 'number', isOptional: true }, // Backoff: no reintentar antes de este timestamp
         { name: 'synced_at', type: 'number', isOptional: true },
         { name: 'fuente', type: 'string', isOptional: true }, // 'mobile' | 'admin_manual' | 'admin_edit'
         { name: 'remote_updated_at', type: 'number', isOptional: true }, // Timestamp of last remote update (ajustado_at)
