@@ -1,5 +1,5 @@
 /**
- * Bottom tab navigator: Home / History / Settings (+ Cierres oculto).
+ * Bottom tab navigator: Home / History / Settings.
  */
 
 import React from 'react';
@@ -8,7 +8,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '@/types/navigation.types';
 import { HomeScreen, HistoryScreen, SettingsScreen } from '@screens/main';
-import { CierresNavigator } from './CierresNavigator';
 import { COLORS, LAYOUT } from '@constants/theme';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -72,16 +71,6 @@ export const MainNavigator: React.FC = () => {
           tabBarIcon: ({ color, size }) => (
             <Text style={{ fontSize: size, color }}>⚙️</Text>
           ),
-        }}
-      />
-      {/* Hidden navigator - accessible from History for closure details */}
-      <Tab.Screen
-        name="Cierres"
-        component={CierresNavigator}
-        options={{
-          headerShown: false,
-          tabBarButton: () => null,
-          tabBarItemStyle: { display: 'none' },
         }}
       />
     </Tab.Navigator>

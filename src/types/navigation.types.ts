@@ -54,15 +54,7 @@ export type KioskStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   History: undefined;
-  Cierres: undefined;
   Settings: undefined;
-};
-
-/**
- * Cierres Stack
- */
-export type CierresStackParamList = {
-  DetalleCierre: { cierreId: string };
 };
 
 /**
@@ -87,12 +79,6 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
   CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, T>,
     RootStackScreenProps<keyof RootStackParamList>
-  >;
-
-export type CierresStackScreenProps<T extends keyof CierresStackParamList> =
-  CompositeScreenProps<
-    StackScreenProps<CierresStackParamList, T>,
-    MainTabScreenProps<keyof MainTabParamList>
   >;
 
 declare global {
