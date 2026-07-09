@@ -464,26 +464,22 @@ export const syncService = {
       return { success: false, recordId: record.id, error: errorMsg };
     };
 
-    // Jornada abierta sin cerrar: el backend SIEMPRE rechazará este marcaje hasta
-    // que el admin cierre la jornada anterior. A diferencia de un orphan sin
-    // credenciales (recuperable), este registro NO es válido ni reintentable, así
-    // que lo borramos del local para no dejar un estado "Trabajando" fantasma ni
-    // reintentar en bucle. El empleado recibe aviso vía OPEN_JOURNEY_REJECTED.
+    // Jornada abierta sin cerrar: el backend rechaza este marcaje hasta que se
+    // cierre la jornada anterior. NO lo borramos: preservamos el marcaje (con su
+    // hora real) via markAsSyncError, así queda con backoff y visible en el banner
+    // de atención. Cuando el empleado reporta la salida faltante (crea una solicitud
+    // marcaje_faltante pendiente), resetBackoffForRetry lo destraba y el backend
+    // —que excluye jornadas con solicitud pendiente— lo acepta. El empleado recibe
+    // aviso vía OPEN_JOURNEY_REJECTED. Preservar evita perder la hora real de la
+    // entrada por un olvido de días atrás (crítico en zonas de señal intermitente).
     const failAsOpenJourney = async (detail: string): Promise<SyncResult> => {
       try {
-        await attendanceRecordService.delete(record.id);
-      } catch (delErr) {
-        console.error('[SyncService] Failed to delete open-journey record:', delErr);
-        // Fallback: si no pudimos borrar, lo marcamos huérfano permanente
-        // (attempts=999) para que NO vuelva a getPendingSync — si no, quedaría
-        // en 'syncing' y el batch lo reprocesaría en bucle cada 30s (rechazo +
-        // alert repetido). markAsOrphan además lo hace visible en getStuckRecords
-        // para recuperación manual desde DataManagement.
-        try {
-          await attendanceRecordService.markAsOrphan(record.id);
-        } catch (orphanErr) {
-          console.error('[SyncService] Fallback markAsOrphan also failed:', orphanErr);
-        }
+        await attendanceRecordService.markAsSyncError(
+          record.id,
+          `${OPEN_JOURNEY_EF_CODE}: ${detail}`
+        );
+      } catch (markErr) {
+        console.error('[SyncService] Failed to preserve open-journey record:', markErr);
       }
       return {
         success: false,
@@ -699,8 +695,9 @@ export const syncService = {
       });
 
       // Si algún marcaje fue rechazado por jornada abierta, avisar al empleado.
-      // El registro local ya fue borrado en processRecord, por lo que el
-      // SYNC_COMPLETED de arriba ya disparó el loadData que limpia "Trabajando".
+      // El registro local se PRESERVA (queda trabado; el Home lo muestra como
+      // "entrada sin registrar" y bloquea marcar salida). El SYNC_COMPLETED de
+      // arriba ya refrescó el estado del Home.
       if (results.some((r) => r.reason === 'open_journey')) {
         syncEvents.emit(SYNC_EVENTS.OPEN_JOURNEY_REJECTED);
       }

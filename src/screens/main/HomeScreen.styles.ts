@@ -89,6 +89,11 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  statusBannerBlocked: {
+    backgroundColor: '#FEE2E2', // Rojo claro
+    borderWidth: 1,
+    borderColor: COLORS.error,
+  },
   statusBannerIcon: {
     fontSize: 32,
     marginRight: SPACING.md,
@@ -111,6 +116,9 @@ export const styles = StyleSheet.create({
   },
   statusBannerTitleIdle: {
     color: COLORS.text,
+  },
+  statusBannerTitleBlocked: {
+    color: '#991B1B', // Rojo oscuro
   },
   statusBannerSubtitle: {
     fontSize: FONT_SIZES.sm,
