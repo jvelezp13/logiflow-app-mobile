@@ -28,14 +28,16 @@ npm run start:clear          # Limpiar cache de Metro
 npx tsc --noEmit             # Verificar errores TypeScript
 npm run lint                 # ESLint
 
-# Build producción
-npx expo prebuild --platform android --clean
-cd android && ./gradlew assembleRelease
-# APK: android/app/build/outputs/apk/release/logiflow-marcaje-{version}.apk
+# Build producción (EAS Cloud — no hay Android SDK local para release)
+eas build --platform android --profile preview   # 'preview' = APK con las env vars de Supabase
+# ⚠️ Usar SIEMPRE el perfil 'preview': el environment 'production' de EAS está VACÍO
+#    (sin EXPO_PUBLIC_SUPABASE_*), por lo que un build 'production' crashea al arrancar
+#    ("Missing Supabase environment variables"). Las variables viven en el env 'preview'.
+# Luego: descargar el APK del link de EAS y publicarlo en GitHub Releases (logiflow-marcaje-{version}.apk).
 
-# Dispositivo Android
-~/Library/Android/sdk/platform-tools/adb devices    # Ver dispositivos
-~/Library/Android/sdk/platform-tools/adb logcat -d  # Ver logs
+# Dispositivo Android (SDK vía Homebrew, NO en ~/Library/Android/sdk)
+/opt/homebrew/share/android-commandlinetools/platform-tools/adb devices    # Ver dispositivos
+/opt/homebrew/share/android-commandlinetools/platform-tools/adb logcat -d  # Ver logs
 ```
 
 ## Stack Tecnológico
@@ -57,8 +59,7 @@ src/
 │   ├── auth/         # LoginScreen
 │   ├── main/         # HomeScreen, HistoryScreen, SettingsScreen
 │   ├── kiosk/        # PinLoginScreen, KioskHomeScreen
-│   ├── novedades/    # Solicitudes de ajuste de marcaje
-│   └── cierres/      # Cierres semanales
+│   └── novedades/    # Solicitudes de ajuste de marcaje
 ├── components/        # Componentes reutilizables
 │   ├── ui/           # Button, Input (primitivos)
 │   ├── Camera/       # CameraCapture (selfie para marcaje)
