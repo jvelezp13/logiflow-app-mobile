@@ -30,6 +30,7 @@ import { syncEvents, SYNC_EVENTS, type SyncCompletedPayload } from '@services/sy
 import { CameraCapture } from '@components/Camera/CameraCapture';
 import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
+import { deleteLocalImage } from '@utils/imageUtils';
 import {
   getConfigForUser,
   calculateNetHours,
@@ -486,6 +487,7 @@ export const HomeScreen: React.FC = () => {
   const handlePhotoCapture = async (photoUri: string, photoBase64: string) => {
     if (!user?.id || !user.cedula || !selectedType) {
       Alert.alert('Error', 'Información de usuario incompleta');
+      await deleteLocalImage(photoUri);
       return;
     }
 
@@ -511,6 +513,7 @@ export const HomeScreen: React.FC = () => {
               text: 'Cancelar',
               style: 'cancel',
               onPress: () => {
+                void deleteLocalImage(photoUri);
                 setSelectedType(null);
                 setProcessingType(null);
                 setIsProcessing(false);
@@ -530,6 +533,7 @@ export const HomeScreen: React.FC = () => {
     } catch (error) {
       console.error('[HomeScreen] Clock error:', error);
       Alert.alert('Error', 'Error al procesar marcaje');
+      await deleteLocalImage(photoUri);
       setSelectedType(null);
       setProcessingType(null);
       setIsProcessing(false);
@@ -546,6 +550,7 @@ export const HomeScreen: React.FC = () => {
   ) => {
     if (!user?.id || !user.cedula || !selectedType) {
       Alert.alert('Error', 'Información de usuario incompleta');
+      await deleteLocalImage(photoUri);
       setProcessingType(null);
       setIsProcessing(false);
       return;
@@ -587,10 +592,12 @@ export const HomeScreen: React.FC = () => {
         await loadData();
       } else {
         Alert.alert('Error', result.error || 'Error al registrar marcaje');
+        await deleteLocalImage(photoUri);
       }
     } catch (error) {
       console.error('[HomeScreen] Clock processing error:', error);
       Alert.alert('Error', 'Error al procesar marcaje');
+      await deleteLocalImage(photoUri);
     } finally {
       setSelectedType(null);
       setProcessingType(null);

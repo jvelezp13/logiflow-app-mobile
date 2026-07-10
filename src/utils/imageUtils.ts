@@ -5,7 +5,22 @@
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SYNC_CONFIG } from '@constants/config';
+
+export const deleteLocalImage = async (uri?: string | null): Promise<void> => {
+  if (!uri || !uri.startsWith('file://')) {
+    return;
+  }
+
+  try {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch (error) {
+    // Cache cleanup must never block attendance. If Android already removed the
+    // temp file, idempotent delete should absorb it; this catch is defensive.
+    console.warn('[ImageUtils] Local image cleanup warning:', error);
+  }
+};
 
 /**
  * Compress and resize image
@@ -69,6 +84,10 @@ export const imageToBase64 = async (uri: string): Promise<string> => {
 
     if (!result.base64) {
       throw new Error('Failed to convert image to base64');
+    }
+
+    if (result.uri && result.uri !== uri) {
+      await deleteLocalImage(result.uri);
     }
 
     return result.base64;

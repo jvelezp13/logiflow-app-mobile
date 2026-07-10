@@ -29,6 +29,7 @@ import { LocationStatusBanner } from '@components/LocationStatusBanner';
 import { Button } from '@components/ui/Button';
 import type { AttendanceType } from '@services/storage';
 import { decimalToAmPm, formatFechaCorta } from '@utils/dateUtils';
+import { deleteLocalImage } from '@utils/imageUtils';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 
 /**
@@ -428,6 +429,7 @@ export const KioskHomeScreen: React.FC = () => {
   const handlePhotoCapture = async (photoUri: string, photoBase64: string) => {
     if (!kioskUser || !selectedType) {
       Alert.alert('Error', 'Información de usuario incompleta');
+      await deleteLocalImage(photoUri);
       return;
     }
 
@@ -450,6 +452,7 @@ export const KioskHomeScreen: React.FC = () => {
               text: 'Cancelar',
               style: 'cancel',
               onPress: () => {
+                void deleteLocalImage(photoUri);
                 setSelectedType(null);
                 setProcessingType(null);
                 setIsProcessing(false);
@@ -469,6 +472,7 @@ export const KioskHomeScreen: React.FC = () => {
     } catch (error) {
       console.error('[KioskHomeScreen] Photo capture error:', error);
       Alert.alert('Error', 'Error al procesar marcaje');
+      await deleteLocalImage(photoUri);
       setSelectedType(null);
       setProcessingType(null);
       setIsProcessing(false);
@@ -485,6 +489,7 @@ export const KioskHomeScreen: React.FC = () => {
   ) => {
     if (!kioskUser || !selectedType) {
       Alert.alert('Error', 'Información de usuario incompleta');
+      await deleteLocalImage(photoUri);
       setProcessingType(null);
       setIsProcessing(false);
       return;
@@ -534,6 +539,7 @@ export const KioskHomeScreen: React.FC = () => {
         setTimeout(handleAutoLogout, AUTO_LOGOUT_DELAY);
       } else {
         Alert.alert('Error', result.error || 'Error al registrar marcaje');
+        await deleteLocalImage(photoUri);
         setSelectedType(null);
         setProcessingType(null);
         setIsProcessing(false);
@@ -541,6 +547,7 @@ export const KioskHomeScreen: React.FC = () => {
     } catch (error) {
       console.error('[KioskHomeScreen] Process attendance error:', error);
       Alert.alert('Error', 'Error al procesar marcaje');
+      await deleteLocalImage(photoUri);
       setSelectedType(null);
       setProcessingType(null);
       setIsProcessing(false);

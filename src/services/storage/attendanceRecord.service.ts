@@ -8,6 +8,7 @@ import { Q } from '@nozbe/watermelondb';
 import { database } from './database';
 import { AttendanceRecord, AttendanceType, AttendanceSyncStatus } from './models';
 import { format } from 'date-fns';
+import { deleteLocalImage } from '@utils/imageUtils';
 
 /**
  * Create attendance record data
@@ -179,21 +180,26 @@ export const attendanceRecordService = {
     }
   },
 
-  // Libera el photo_base64 de un registro ya subido a Storage. La foto sigue
-  // accesible via photoUrl en Supabase; lo que se borra es la copia local en
-  // SQLite que infla la app data partition (critico en handhelds tipo Zebra
-  // con /data chico).
+  // Libera datos locales de foto de un registro ya subido a Storage. La foto
+  // sigue accesible via photoUrl en Supabase; lo que se borra es la copia local
+  // en SQLite y el archivo cacheado que inflan la app data partition (critico
+  // en handhelds tipo Zebra con /data chico).
   async clearPhotoBase64(recordId: string): Promise<void> {
     try {
       const record = await database
         .get<AttendanceRecord>('attendance_records')
         .find(recordId);
 
+      const photoUri = record.photoUri;
+
       await database.write(async () => {
         await record.update((rec) => {
           rec.photoBase64 = '';
+          rec.photoUri = '';
         });
       });
+
+      await deleteLocalImage(photoUri);
     } catch (error) {
       console.error('[AttendanceRecordService] clearPhotoBase64 error:', error);
     }
@@ -208,7 +214,6 @@ export const attendanceRecordService = {
         .get<AttendanceRecord>('attendance_records')
         .query(
           Q.where('photo_uploaded', true),
-          Q.where('photo_base64', Q.notEq('')),
         )
         .fetch();
 
@@ -216,24 +221,31 @@ export const attendanceRecordService = {
         return 0;
       }
 
-      const withBase64 = records.filter((r) => !!r.photoBase64);
-      if (withBase64.length === 0) {
+      const withLocalPhotoData = records.filter((r) => !!r.photoBase64 || !!r.photoUri);
+      if (withLocalPhotoData.length === 0) {
         return 0;
       }
 
-      console.log(`[AttendanceRecordService] Backfilling photo_base64 cleanup for ${withBase64.length} records`);
+      const localPhotoUris = withLocalPhotoData
+        .map((record) => record.photoUri)
+        .filter((uri): uri is string => !!uri);
+
+      console.log(`[AttendanceRecordService] Backfilling local photo cleanup for ${withLocalPhotoData.length} records`);
 
       await database.write(async () => {
         await Promise.all(
-          withBase64.map((record) =>
+          withLocalPhotoData.map((record) =>
             record.update((rec) => {
               rec.photoBase64 = '';
+              rec.photoUri = '';
             }),
           ),
         );
       });
 
-      return withBase64.length;
+      await Promise.all(localPhotoUris.map((uri) => deleteLocalImage(uri)));
+
+      return withLocalPhotoData.length;
     } catch (error) {
       console.error('[AttendanceRecordService] clearAllUploadedPhotos error:', error);
       return 0;

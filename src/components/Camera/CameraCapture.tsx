@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useCamera } from '@hooks/useCamera';
-import { compressImage } from '@utils/imageUtils';
+import { compressImage, deleteLocalImage } from '@utils/imageUtils';
 import { Button } from '@components/ui/Button';
 import { styles } from './CameraCapture.styles';
 
@@ -69,14 +69,18 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       setIsProcessing(true);
 
       // Compress image
-      const { base64 } = await compressImage(photoUri);
+      const { uri: compressedUri, base64 } = await compressImage(photoUri);
 
       if (!base64) {
         throw new Error('Error al procesar imagen');
       }
 
       // Call onCapture callback
-      onCapture(photoUri, base64);
+      onCapture(compressedUri, base64);
+
+      if (compressedUri !== photoUri) {
+        await deleteLocalImage(photoUri);
+      }
 
       // Reset and close
       setPhotoUri(null);
@@ -92,14 +96,16 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   /**
    * Handle retake photo
    */
-  const handleRetake = () => {
+  const handleRetake = async () => {
+    await deleteLocalImage(photoUri);
     setPhotoUri(null);
   };
 
   /**
    * Handle modal close
    */
-  const handleClose = () => {
+  const handleClose = async () => {
+    await deleteLocalImage(photoUri);
     setPhotoUri(null);
     onClose();
   };

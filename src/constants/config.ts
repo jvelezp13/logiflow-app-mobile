@@ -29,14 +29,14 @@ export const SYNC_CONFIG = {
   maxRetries: 5,
   batchSize: 10, // Records per batch
   photoMaxSize: 2 * 1024 * 1024, // 2MB
-  photoQuality: 0.7, // JPEG quality (0-1)
+  photoQuality: 0.5, // JPEG quality (0-1) - low storage/RAM devices
 } as const;
 
 /**
  * Camera Configuration
  */
 export const CAMERA_CONFIG = {
-  quality: 0.7,
+  quality: 0.5,
   allowsEditing: false,
   aspect: [4, 3] as [number, number],
   exif: false, // Don't include EXIF data for privacy
